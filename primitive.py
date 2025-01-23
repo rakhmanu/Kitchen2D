@@ -5,6 +5,7 @@ from kitchen2d.gripper import Gripper
 import numpy as np
 import time
 import active_learners.helper as helper
+
 SETTING = {
     'do_gui': False,
     'sink_w': 10.,
@@ -22,16 +23,16 @@ SETTING = {
 
 
 def query_gui(action_type, kitchen):
-    choice = input('Show GUI for {}? [y/n]'.format(action_type))
-    if choice == 'y':
-        print('Enabling GUI...')
-        kitchen.enable_gui()
-    else:
-        print('Disabling GUI...')
-        kitchen.disable_gui()
+    print('Enabling GUI for {}...'.format(action_type))
+     #kitchen.enable_gui()
 
 def main():
     kitchen = Kitchen2D(**SETTING)
+
+    # Enable GUI once at the beginning
+    print('Initializing GUI...')
+    kitchen.enable_gui()
+
     expid_pour, expid_scoop = 0, 0 
 
     # Try setting is_adaptive to be False. It will use the adaptive sampler that samples uniformly from
@@ -53,15 +54,12 @@ def main():
     large_cup = ks.make_cup(kitchen, (23, 0), 0, scoop_w, scoop_h, holder_d)
     
     # Move
-    query_gui('MOVE', kitchen)
-    gripper.find_path((-5., 10), 0, maxspeed=0.5)
+    #gripper.find_path((-5., 10), 0, maxspeed=0.5)
 
     # Push
-    query_gui('PUSH', kitchen)
-    gripper.push(block, (1.,0.), -6, 0.5)
+    #gripper.push(block, (1.,0.), -6, 0.5)
 
     # Pick
-    query_gui('GRASP', kitchen)
     # Sample from the super level set of the GP learned for pour
     grasp, rel_x, rel_y, dangle, _, _, _, _ = gp_pour.sample(c_pour)
     dangle *= np.sign(rel_x)
@@ -70,16 +68,14 @@ def main():
     gripper.grasp(cup1, grasp)
 
     # Get water
-    query_gui('GET-WATER', kitchen)
     gripper.get_liquid_from_faucet(5)
 
     # Pour
-    query_gui('POUR', kitchen)
-    print (gripper.pour(cup2, (rel_x, rel_y), dangle))
+    print(gripper.pour(cup2, (rel_x, rel_y), dangle))
 
     # Place
-    query_gui('PLACE', kitchen)
     gripper.place((10, 0), 0)
+
     
     # Scoop
     #kitchen.gen_liquid_in_cup(large_cup, 1000, 'sugar')

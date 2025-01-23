@@ -7,7 +7,7 @@ try:
     from motion_planners.rrt_connect import direct_path
 except ImportError:
     raise RuntimeError('Requires https://github.com/caelan/motion-planners')
-from kitchen_constants import *
+from .kitchen_constants import *
 
 def motion_planner(pos, angle, dpos, dangle, check_point_collision, 
                    check_path_collision, motion_angle=0, linear=False, step_size=0.1, 

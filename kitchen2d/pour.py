@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # Copyright (c) 2017 Zi Wang
-import kitchen_stuff as ks
-from kitchen_stuff import Kitchen2D
-from gripper import Gripper
+from . import kitchen_stuff as ks
+from .kitchen_stuff import Kitchen2D
+from .gripper import Gripper
 import sys
 import numpy as np
-import cPickle as pickle
+import pickle
 import os
 import time
 settings = {
@@ -96,6 +96,6 @@ if __name__ == '__main__':
     x = list(samples)
     for xx in x:
         start = time.time()
-        print func(xx)
-        print time.time() - start
+        print (func(xx))
+        print (time.time() - start)
     

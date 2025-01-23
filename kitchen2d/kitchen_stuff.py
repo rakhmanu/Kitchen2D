@@ -1,7 +1,7 @@
 # Author: Zi Wang
 from Box2D import *
 from Box2D.b2 import *
-from kitchen_constants import *
+from .kitchen_constants import *
 
 import pygame
 import numpy as np

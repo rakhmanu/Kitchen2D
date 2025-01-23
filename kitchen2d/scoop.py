@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # Copyright (c) 2017 Zi Wang
-import kitchen_stuff as ks
-from kitchen_stuff import Kitchen2D
-from gripper import Gripper
+from . import kitchen_stuff as ks
+from .kitchen_stuff import Kitchen2D
+from .gripper import Gripper
 import sys
 import numpy as np
-import cPickle as pickle
+import pickle
 import os
 import time
 settings = {
@@ -80,7 +80,7 @@ class Scoop(object):
         self.gripper.close(timeout=0.1)
         self.gripper.check_grasp(self.spoon)
         success, score = self.gripper.scoop(self.cup, (rel_x1, rel_y1), (rel_x2, rel_y2), (rel_x3, rel_y3))
-        print 'score=',score
+        print ('score=',score)
         return 5. * (score - 0.2)
         
 
@@ -91,6 +91,6 @@ if __name__ == '__main__':
     x = list(samples)
     for xx in x:
         start = time.time()
-        print func(xx)
-        print time.time() - start
+        print (func(xx))
+        print (time.time() - start)
     

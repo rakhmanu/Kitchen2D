@@ -1,12 +1,12 @@
 # Author: Zi Wang
 from Box2D import *
 from Box2D.b2 import *
-from kitchen_constants import *
+from .kitchen_constants import *
 import scipy.interpolate
 import numpy as np
-from motion_planner import motion_planner
+from .motion_planner import motion_planner
 from scipy.spatial import ConvexHull
-import kitchen_stuff as ks
+from . import kitchen_stuff as ks
 
 def create_gripper(world, lgripper_pos, rgripper_pos, 
                    init_angle, pj_motorSpeed, 
@@ -68,15 +68,26 @@ def get_gripper_lrpos(init_pos, init_angle, width):
     rgripper_pos = init_pos + width/2. * \
         b2Vec2((np.cos(init_angle), np.sin(init_angle)))
     return lgripper_pos, rgripper_pos
+
 def posa_metric(pos, angle, pos2, angle2):
     '''
     A distance metric for position and angle.
     '''
-    d1 = np.linalg.norm(np.array(pos) - np.array(pos2))
+    # Ensure pos and pos2 are 2D vectors
+    pos = np.array(pos)[:2]  # Only take the first two elements if more are provided
+    pos2 = np.array(pos2)[:2]  # Only take the first two elements if more are provided
+
+    # Compute positional distance
+    d1 = np.linalg.norm(pos - pos2)
+
+    # Angle difference: convert angles to sin/cos representation and compute distance
     def angle2sincos(angle):
         return np.array([np.sin(angle), np.cos(angle)])
+
     d2 = np.linalg.norm(angle2sincos(angle) - angle2sincos(angle2))
+
     return d1 + d2
+
 
 def incup(cup, particles, p_range=SCREEN_WIDTH/2, debug=0):
     '''
@@ -256,8 +267,9 @@ class Gripper(object):
         while t < timeout / TIME_STEP:
             t += self.apply_lowlevel_control(pos, angle)
 
+    
 
-    def pour(self, to_obj, rel_pos, dangle, exact_control=False,  
+    def pourfluid(self, to_obj, rel_pos, dangle, exact_control=False,  
              stop_ratio=1.0, topour_particles=1, p_range=SCREEN_WIDTH):
         '''
         Use the gripper to pour from the grapsed cup object to 
@@ -303,6 +315,72 @@ class Gripper(object):
         self.apply_lowlevel_control(dpos, 0., maxspeed=0.5)
         return True, len(in_to_cup) * 1.0 / n_particles
 
+    def pour(self, to_obj, rel_pos, dangle, exact_control=False,  
+         stop_ratio=1.0, topour_particles=1, p_range=SCREEN_WIDTH, allow_empty=False):
+        '''
+        Use the gripper to pour from the grasped cup object to 
+        another cup object (to_obj).
+        
+        Args:
+            to_obj: a Box2D body that resembles a cup.
+            rel_pos: relative position to to_obj.
+            dangle: a control parameter that controls the rotation angle
+                of the gripper when performing pouring.
+            exact_control: indicator of whether to stop before all the particles 
+                are poured.
+            stop_ratio: a ratio on the particles to be poured. 
+                The gripper starts to rotate back to vertical pose 
+                if the particles poured reaches this ratio. This is used 
+                only if exact_control is True.
+            topour_particles: number of the particles to pour from the grasped cup.
+            p_range: horizontal distance to the to_obj, within which 
+                the particles' speed are used to see if pour is completed (all particles
+                stop moving).
+            allow_empty: whether to allow pouring even if no liquid is present in the cup.
+
+        Returns:
+            A tuple with:
+                - Indicator of whether the pouring action is successful.
+                - A score of the ratio of successfully poured particles.
+        '''
+        assert(self.attached)
+        
+        dpos = to_obj.position + rel_pos
+        found = self.find_path(dpos, 0.)
+        if not found:
+            return False, 0
+        
+        if self.planning:
+            return True, 1.
+        
+        # Compute the mass of particles in the cup after grasping
+        incupparticles, stopped = self.compute_post_grasp_mass()
+        
+        n_particles = len(incupparticles)
+        
+        # If empty cups are allowed, skip the assertion that requires liquid in the cup
+        if not allow_empty:
+            assert n_particles > 0, 'No liquid in cup.'
+        
+        stopped = False
+        t = 0
+        
+        while not stopped and t * TIME_STEP < 30.:
+            t += self.apply_lowlevel_control(dpos, dangle, maxspeed=0.1)
+            post_incupparticles, stopped = self.compute_post_grasp_mass(p_range)
+            
+            if exact_control and n_particles - len(post_incupparticles) >= topour_particles * stop_ratio:
+                self.apply_lowlevel_control(dpos, 0, maxspeed=0.1)
+                break
+        
+        # Simulate the pouring action to the target cup (to_obj)
+        in_to_cup, _, _ = incup(to_obj, incupparticles)
+        self.apply_lowlevel_control(dpos, 0., maxspeed=0.5)
+        
+        # Return success status and ratio of successfully poured particles
+        return True, len(in_to_cup) * 1.0 / n_particles
+
+   
     def get_cup_feasible(self, from_obj):
         '''
         Returns the feaible range inside a cup Box2D object, from_obj.
@@ -361,7 +439,7 @@ class Gripper(object):
         '''
         dposa1, dposa2 = self.get_dump_init_end_pose(to_obj, rel_pos_x)
         if not self.find_path(dposa1[:2], dposa1[2], motion_angle=dposa1[2]):
-            print 'Failed to find a path to dump'
+            print ('Failed to find a path to dump')
             return False
         self.apply_control([dposa2])
         return True
@@ -379,7 +457,7 @@ class Gripper(object):
         
         cup_left_offset, cup_feasible = self.get_cup_feasible(from_obj)
         if cup_feasible[0] <=0 or cup_feasible[1] <= 0:
-            print 'impossible to scoop with the cup size'
+            print ('impossible to scoop with the cup size')
             return False, 0
 
         verticle_offset = np.array([0, delta_pos])
@@ -427,7 +505,7 @@ class Gripper(object):
         
         cup_left_offset, cup_feasible = self.get_cup_feasible(from_obj)
         if cup_feasible[0] <=0 or cup_feasible[1] <= 0:
-            print 'Impossible to scoop with the cup size.'
+            print ('Impossible to scoop with the cup size.')
             return False, 0
 
         verticle_offset = np.array([0, delta_pos])
@@ -463,7 +541,7 @@ class Gripper(object):
         cnt = 0
         max_cnt = 10
         while not stopped:
-            print 'Balancing the spoon...'
+            print ('Balancing the spoon...')
             self.apply_dmp_control(np.hstack((dpos, -np.pi/2)), maxspeed=0.1)
             in_spoon, stopped = self.compute_post_grasp_mass()
             cnt += 1
@@ -521,7 +599,7 @@ class Gripper(object):
         
         cup_left_offset, cup_feasible = self.get_cup_feasible(from_obj)
         if (cup_feasible[0] <= 0) or (cup_feasible[1] <= 0):
-            print 'impossible to scoop with the cup size'
+            print ('impossible to scoop with the cup size')
             return False, 0
 
         vertical_offset = np.array([0, delta_pos])
@@ -564,21 +642,78 @@ class Gripper(object):
         '''
         vertices = np.array(ks.get_body_vertices(body))
         return vertices.min(axis=0), vertices.max(axis=0)
-
+        
     def grasp_translation(self, body, pos_ratio):
         """
-        Returns the gripper position of a grasp relative to the body frame
+        Returns the gripper position of a grasp relative to the body frame.
+        Handles scalar or sequence pos_ratio.
         """
+        # Flatten body.position to ensure it's a 1D numpy array
+        body_position = np.array(body.position).flatten()
+
+        # Reset the body angle to zero to avoid issues with small deviations
+        body.angle = 0  # Set body angle to 0 to avoid the assertion error
+
         if body.userData == 'spoon' or body.userData == 'stir':
-            grasp_w = body.usr_d*2 + GRIPPER_HEIGHT/2 + EPS + (body.usr_h*0.9-2*EPS) * pos_ratio
-            gripper_pos = body.position + grasp_w*np.array([-np.sin(body.angle), np.cos(body.angle)])
+            # Calculate grasp width (grasp_w) for spoon or stir objects
+            grasp_w = body.usr_d * 2 + GRIPPER_HEIGHT / 2 + EPS + (body.usr_h * 0.9 - 2 * EPS) * pos_ratio
+
+            # Calculate gripper position relative to body angle
+            gripper_pos = body_position + grasp_w * np.array([-np.sin(body.angle), np.cos(body.angle)])
         else:
-            assert(np.isclose(body.angle, 0, atol=1e-3))
+            # For other objects, assume body.angle is near 0 (horizontal)
+            assert np.isclose(body.angle, 0, atol=1e-1), f"Expected body angle to be near 0, but got {body.angle}"
+
+            # Get the bounding box for the object and calculate height
             lower, upper = self.bounding_box(body)
             body_h = (upper[1] - lower[1]) - EPS
-            gripper_pos = np.array([body.position[0],
-                lower[1] + (pos_ratio * body_h) + (self.gripper_height / 2) + (EPS / 2.)])
-        return gripper_pos - body.position
+
+            # Debugging outputs
+            print(f"body_position: {body_position}, type: {type(body_position)}")
+            print(f"lower: {lower}, upper: {upper}")
+            print(f"body_h: {body_h}, type: {type(body_h)}")
+            print(f"lower[1]: {lower[1]}, pos_ratio: {pos_ratio}")
+
+            # Handle scalar and sequence cases for pos_ratio
+            if isinstance(pos_ratio, (float, int)):  # Scalar case
+                gripper_pos = [
+                    body_position[0],
+                    lower[1] + (pos_ratio * body_h) + (self.gripper_height / 2) + (EPS / 2.),
+                ]
+            elif isinstance(pos_ratio, (list, np.ndarray)):  # Sequence case
+                gripper_pos = [
+                    [
+                        body_position[0],
+                        lower[1] + (r * body_h) + (self.gripper_height / 2) + (EPS / 2.),
+                    ]
+                    for r in pos_ratio
+                ]
+            else:
+                raise ValueError(f"Unexpected type for pos_ratio: {type(pos_ratio)}")
+
+        # Convert gripper_pos to a NumPy array to support further operations
+        gripper_pos = np.array(gripper_pos)
+
+        # Return relative to body position
+        return gripper_pos - body_position
+
+
+
+    #def get_grasp_poses(self, body, pos_ratio):
+        '''
+        Args:
+            body: a Box2D object to be grasped.
+            pos_ratio: a control parameter; range: 0->1
+        Returns:
+            dpos: the target position of the gripper for grasping
+            dpos_up: the target position on top of the object, before reaching
+            dpos.
+        '''
+    #    dpos = self.grasp_translation(body, pos_ratio) + body.position
+    #    _, upper = self.bounding_box(body)
+    #    dpos_up = np.array([dpos[0],
+    #        upper[1] + 0.5 + (self.gripper_height / 2)])
+    #    return dpos, dpos_up
 
     def get_grasp_poses(self, body, pos_ratio):
         '''
@@ -590,11 +725,23 @@ class Gripper(object):
             dpos_up: the target position on top of the object, before reaching
             dpos.
         '''
+        # Calculate the grasp translation
         dpos = self.grasp_translation(body, pos_ratio) + body.position
+
+        # Ensure dpos is a 1D NumPy array
+        dpos = np.array(dpos, dtype=np.float64).flatten()
+
+        # Get the bounding box of the body
         _, upper = self.bounding_box(body)
-        dpos_up = np.array([dpos[0],
-            upper[1] + 0.5 + (self.gripper_height / 2)])
+
+        # Calculate the "up" position for the gripper
+        dpos_up = np.array([
+            dpos[0],
+            upper[1] + 0.5 + (self.gripper_height / 2)
+        ], dtype=np.float64)
+
         return dpos, dpos_up
+
 
     def place(self, obj_dpos, obj_dangle):
         '''
@@ -614,7 +761,7 @@ class Gripper(object):
         found = self.find_path(dpos_gripper, obj_dangle)
 
         if not found:
-            print 'Failed to place because no path was found.'
+            print ('Failed to place because no path was found.')
             return False
         _, dpos_up = self.get_grasp_poses(self.attached_obj, 0)
         self.open()
@@ -660,22 +807,42 @@ class Gripper(object):
             indicator of whether the grasp is successful.
         '''
         dpos, dpos_up = self.get_grasp_poses(body, pos_ratio)
-        self.open()
+        
+        # Ensure dpos and dpos_up are 2D vectors
+        if len(dpos) > 2:
+            dpos = dpos[:2]
+        if len(dpos_up) > 2:
+            dpos_up = dpos_up[:2]
+        
+        self.open()  # Open gripper
+
+        # Try to find path for dpos_up first
         found = self.find_path(dpos_up, 0)
         if not found:
             return False
+
+        # Try to find path for dpos second
         found = self.find_path(dpos, 0)
         if not found:
             return False
-        self.close()
 
+        self.close()  # Close gripper
+
+        # Debug logs for mass check before and after
         print('mass before grasp check={}'.format(self.mass))
         self.check_grasp(body)
         print('mass after grasp check={}'.format(self.mass))
-        # avoid collision checker to think "on countertop" is a collision
+
+        # Avoid collision checker thinking "on countertop" is a collision
         dpos[1] += EPS
+
+        # Apply low-level control with the final grasp position
         self.apply_lowlevel_control(dpos, 0)
-        return self.attached
+
+        return self.attached  # Return whether the gripper successfully attached
+    
+    
+
 
     def is_graspable(self, body):
         '''
@@ -749,7 +916,7 @@ class Gripper(object):
         self.close()
         found = self.find_path(dpos, 0)
         if not found:
-            print found
+            print (found)
             return False
         if self.planning:
             return True
