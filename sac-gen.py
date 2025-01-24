@@ -39,6 +39,7 @@ class KitchenEnv(gym.Env):
         self.fig, self.ax = plt.subplots()
         self.render_initialized = False
 
+
     def reset(self, seed=None, **kwargs):
         """Reset the environment and return the initial state."""
         np.random.seed(seed)
@@ -60,14 +61,18 @@ class KitchenEnv(gym.Env):
         done = False  # Default termination condition
         truncated = False  # Placeholder truncated condition
         
+        # Log action
+        print(f"Action taken: {action}")
+        
         # Process the action (this could be any logic you want to apply)
         self.gripper.find_path((15, 10), 0)  # Update this based on your agent's actions
         
-        # Try to grasp the cup (assuming `grasp` method returns a boolean indicating success)
+        # Try to grasp the cup (assuming grasp method returns a boolean indicating success)
         grasp_successful = self.gripper.grasp(self.cup1, action)
         
         if grasp_successful:
             # If the grasp is successful, proceed to pour the liquid
+            print("Grasp successful.")
             gp_pour, c_pour = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)
             grasp, rel_x, rel_y, dangle, _, _, _, _ = gp_pour.sample(c_pour)
 
@@ -79,20 +84,19 @@ class KitchenEnv(gym.Env):
             pour_successful = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)  # Pour action
             
             if pour_successful:
-                # If pouring is successful, give a positive reward
+                print("Pour successful.")
                 reward = 10
                 self.gripper.place((15, 0), 0)
                 done = True  # The task is complete when pouring is successful
             else:
-                # If pouring failed, apply penalty
+                print("Pour failed.")
                 reward = -10
                 done = True  # The episode ends when pour fails
-                print("Action failed: Gripper could not pour liquid.")
         else:
             # If grasping the cup failed, apply penalty
+            print("Grasp failed.")
             reward = -10
             done = True  # End the episode after failure
-            print("Action failed: Gripper could not grasp the cup.")
         
         # Render the environment during each step
         self.render()
@@ -101,6 +105,7 @@ class KitchenEnv(gym.Env):
 
         # Return 5 values as expected by Stable Baselines3
         return state, reward, done, truncated, info
+
 
 
 
@@ -175,11 +180,26 @@ class KitchenEnv(gym.Env):
 
     def close(self):
         """Close the environment."""
-        self.kitchen.close()
+        #  self.kitchen.close()
         plt.close(self.fig)
 
-# Initialize and wrap the environment with DummyVecEnv for Stable Baselines3
-def make_env():
+# Modified environment to include different cup sizes
+class ModifiedKitchenEnv(KitchenEnv):
+    def _create_objects(self):
+        """Create cups with modified sizes."""
+        if self.cup1 is None:
+            # New cup sizes
+            pour_from_w, pour_from_h, pour_to_w, pour_to_h = (4, 6, 8, 10)  # Example new dimensions
+            holder_d = 0.55
+
+            self.gripper = Gripper(self.kitchen, (0, 8), 0)
+            self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
+            self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
+
+
+# Evaluate the trained SAC model on the new environment
+def evaluate_on_new_env():
+    # Create the modified environment
     setting = {
         'do_gui': True,
         'sink_w': 10.,
@@ -194,76 +214,38 @@ def make_env():
         'planning': False,
         'overclock': 50
     }
-    env = KitchenEnv(setting)
-    return env
+    env = ModifiedKitchenEnv(setting)
 
-def train_sac():
-    # Create environment wrapped in DummyVecEnv for Stable Baselines3
-    env = DummyVecEnv([make_env])
-
-    log_dir = os.path.join(os.getcwd(), "kitchen2d_tensorboard")
-    model = SAC('MlpPolicy', env, verbose=1, tensorboard_log=log_dir)
-
-    # Start training
-    model.learn(total_timesteps=10)  # You can adjust the number of timesteps
-
-    # Save the model after training
-    model.save("pour_sac_model")
-
-
-def evaluate_model(model_path="pour_sac_model"):
     # Load the trained model
+    model_path = "pour_sac_model" 
+    if not os.path.exists(model_path + ".zip"):
+        raise FileNotFoundError("Trained SAC model not found. Please train the model first.")
+
     model = SAC.load(model_path)
 
-    # Create the environment wrapped in DummyVecEnv
-    env = DummyVecEnv([make_env])
-
-    # Define evaluation parameters
+    # Evaluate the model
     num_episodes = 5
-    total_rewards = []
-    success_count = 0
-    success_threshold = 5  # Example threshold for success
+    rewards = []
 
-    # Evaluation loop
     for episode in range(num_episodes):
-        obs = env.reset()  # Reset environment at the start of each episode
-        done = False
+        state, _ = env.reset()
         episode_reward = 0
+        done = False
+        truncated = False
 
-        while not done:
-            action, _states = model.predict(obs)  # Predict action from the model
-           
-            # Get the result from env.step
-            step_result = env.step(action)  # Step returns 4 values
-            
-            print(f"Step result: {step_result}")  # Debug print to see structure
-            
-            # Unpack the result into 4 values
-            obs, reward, done, info = step_result  # Now unpack 4 values instead of 5
-
+        while not (done or truncated):
+            action, _ = model.predict(state, deterministic=True)  # Use deterministic actions for evaluation
+            state, reward, done, truncated, info = env.step(action)
             episode_reward += reward
+            env.render()
 
-        total_rewards.append(episode_reward)
+        rewards.append(episode_reward)
+        print(f"Episode {episode + 1}: Total Reward = {episode_reward}")
 
-        # Track success (e.g., if the reward exceeds a threshold)
-        if episode_reward >= success_threshold:
-            success_count += 1
+    avg_reward = np.mean(rewards)
+    print(f"\nEvaluation Completed: Average Reward over {num_episodes} episodes = {avg_reward}")
+    env.close()
 
-    # Print the evaluation results
-    average_reward = sum(total_rewards) / num_episodes
-    success_rate = success_count / num_episodes
-
-    print(f"Average reward over {num_episodes} episodes: {average_reward}")
-    print(f"Success rate: {success_rate * 100}%")
-
-
-
-# Main function
-def main():
-    print("Training the model with GUI...")
-    train_sac()
-    print("Training completed. Now evaluating the model...")
-    evaluate_model()
 
 if __name__ == "__main__":
-    main()
+    evaluate_on_new_env()

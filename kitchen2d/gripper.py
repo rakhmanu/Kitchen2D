@@ -1230,7 +1230,18 @@ class Gripper(object):
         l_av = -np.sum(trans * self.lgripper.linearVelocity)
         angular_v = (r_av + l_av)/2/self.radius
         return np.hstack((linear_v, angular_v))
+    @position.setter
+    def position(self, value):
+        # Ensure `value` is a b2Vec2 object
+        if not isinstance(value, b2Vec2):
+            value = b2Vec2(*value)  # Convert tuple to b2Vec2
 
+        # Calculate the center offset
+        center_offset = value - self.position
+
+        # Adjust the positions of the left and right grippers
+        self.lgripper.position += center_offset
+        self.rgripper.position += center_offset
     def set_position(self, pos, angle):
         '''
         Set the pose of gripper to be at position pos and angle angle.
