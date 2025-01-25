@@ -67,32 +67,30 @@ class KitchenEnv(gym.Env):
         grasp_successful = self.gripper.grasp(self.cup1, action)
         
         if grasp_successful:
-            # If the grasp is successful, proceed to pour the liquid
+            print("Grasp successful!")
             gp_pour, c_pour = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)
-            grasp, rel_x, rel_y, dangle, _, _, _, _ = gp_pour.sample(c_pour)
-
-            # Adjust dangle based on the sign of rel_x
+            grasp, rel_x, rel_y, dangle, *_ = gp_pour.sample(c_pour)
             dangle *= np.sign(rel_x)
             self.gripper.get_liquid_from_faucet(5)
             
-            # Perform the pour action from cup1 to cup2
-            pour_successful = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)  # Pour action
-            
-            if pour_successful:
-                # If pouring is successful, give a positive reward
-                reward = 10
+            # Pouring action and result validation
+            pour_successful, pos_ratio = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)  # Expecting a tuple from `pour`
+            print(f"Pouring result: {pour_successful}, Position Ratio: {pos_ratio}")
+
+            if pour_successful and pos_ratio > 0:  # Ensure pouring was successful and some liquid was transferred
+                reward = 10  # Reward for success
                 self.gripper.place((15, 0), 0)
-                done = True  # The task is complete when pouring is successful
+                done = True
+                print("Pouring successful! Reward assigned.")
             else:
-                # If pouring failed, apply penalty
-                reward = -10
-                done = True  # The episode ends when pour fails
-                print("Action failed: Gripper could not pour liquid.")
+                reward = -10  # Penalty for failed pour
+                done = True
+                print("Pouring failed. Penalty assigned.")
         else:
-            # If grasping the cup failed, apply penalty
-            reward = -10
-            done = True  # End the episode after failure
-            print("Action failed: Gripper could not grasp the cup.")
+            reward = -10  # Penalty for failed grasp
+            done = True
+            print("Grasp failed. Penalty assigned.")
+
         
         # Render the environment during each step
         self.render()
@@ -205,24 +203,26 @@ def train_sac():
     model = SAC('MlpPolicy', env, verbose=1, tensorboard_log=log_dir)
 
     # Start training
-    model.learn(total_timesteps=10)  # You can adjust the number of timesteps
+    model.learn(total_timesteps=30)  # You can adjust the number of timesteps
 
     # Save the model after training
-    model.save("pour_sac_model")
+    model.save("pour_sac_model-ep-50")
 
 
-def evaluate_model(model_path="pour_sac_model"):
+def evaluate_model(model_path="pour_sac_model-ep-50"):
     # Load the trained model
     model = SAC.load(model_path)
 
     # Create the environment wrapped in DummyVecEnv
-    env = DummyVecEnv([make_env])
+    num_envs = 4  # Use 4 environments in parallel
+    env = DummyVecEnv([make_env for _ in range(num_envs)])
+     # env = DummyVecEnv([make_env])
 
-    # Define evaluation parameters
-    num_episodes = 5
+   # Define evaluation parameters
+    num_episodes = 10
     total_rewards = []
-    success_count = 0
-    success_threshold = 5  # Example threshold for success
+    success_threshold = 10  # Example threshold for success
+    success_episodes = 0  # Track successful episodes
 
     # Evaluation loop
     for episode in range(num_episodes):
@@ -231,27 +231,23 @@ def evaluate_model(model_path="pour_sac_model"):
         episode_reward = 0
 
         while not done:
-            action, _states = model.predict(obs)  # Predict action from the model
-           
-            # Get the result from env.step
-            step_result = env.step(action)  # Step returns 4 values
-            
-            print(f"Step result: {step_result}")  # Debug print to see structure
-            
-            # Unpack the result into 4 values
-            obs, reward, done, info = step_result  # Now unpack 4 values instead of 5
+            action, _states = model.predict(obs)  # Predict action
+            obs, reward, done, info = env.step(action)
 
+            reward = reward[0]  # Convert reward to scalar (if using DummyVecEnv)
             episode_reward += reward
 
         total_rewards.append(episode_reward)
 
-        # Track success (e.g., if the reward exceeds a threshold)
-        if episode_reward >= success_threshold:
-            success_count += 1
+        print(f"Episode {episode + 1}: Total Reward = {episode_reward}")  # Debug print
 
-    # Print the evaluation results
+        # Increment success count if the reward exceeds the threshold
+        if episode_reward >= success_threshold:
+            success_episodes += 1
+
+    # Calculate statistics
     average_reward = sum(total_rewards) / num_episodes
-    success_rate = success_count / num_episodes
+    success_rate = success_episodes / num_episodes
 
     print(f"Average reward over {num_episodes} episodes: {average_reward}")
     print(f"Success rate: {success_rate * 100}%")

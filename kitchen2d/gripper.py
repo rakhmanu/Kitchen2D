@@ -233,6 +233,26 @@ class Gripper(object):
         self.reset_mass()
         self.planning = self.b2w.planning
         self.is_copy = is_copy
+        
+    def set_grasped(self, body, pos_ratio, pos, angle):
+        self.pj.motorSpeed = -MOTOR_SPEED
+        self.attached = True
+        self.attached_obj = body
+        self.compute_post_grasp_mass()
+        gripper_pos, _ = self.get_grasp_poses(body, pos_ratio)
+        
+        # Ensure mass update
+        width = body.usr_w + self.gripper_width
+        lgripper_pos, rgripper_pos = get_gripper_lrpos(gripper_pos, body.angle, width)
+        self.lgripper.position = lgripper_pos
+        self.rgripper.position = rgripper_pos
+        
+        # Apply force if necessary
+        self.apply_grasping_force(body)
+        
+        self.set_position(pos, angle)
+        return True
+
     def reset_mass(self):
         '''
         Reset the mass of the gripper.
