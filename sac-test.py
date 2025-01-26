@@ -205,13 +205,13 @@ def train_sac():
     model = SAC('MlpPolicy', env, verbose=1, tensorboard_log=log_dir)
 
     # Start training
-    model.learn(total_timesteps=200)  # You can adjust the number of timesteps
+    model.learn(total_timesteps=600)  # You can adjust the number of timesteps
 
     # Save the model after training
-    model.save("pour_sac_model-ep-200")
+    model.save("pour_sac_model-ep-600")
 
 
-def evaluate_model(model_path="pour_sac_model-ep-200"):
+def evaluate_model(model_path="pour_sac_model-ep-600"):
     # Load the trained model
     model = SAC.load(model_path)
 
