@@ -314,8 +314,8 @@ def dual_focused(problem, max_time=INF, max_cost=INF, terminate_cost=INF, effort
     while (time.time() - start_time) < max_time:
         num_iterations += 1
         if verbose:
-            print '\nEpoch: {} | Iteration: {} | Disabled: {} | Cost: {} | '              'Search time: {:.3f} | Stream time: {:.3f} | Total time: {:.3f}'.format(
-                num_epochs, num_iterations, len(disabled), best_cost, search_time, stream_time, time.time() - start_time)
+            print ('\nEpoch: {} | Iteration: {} | Disabled: {} | Cost: {} | '              'Search time: {:.3f} | Stream time: {:.3f} | Total time: {:.3f}'.format(
+                num_epochs, num_iterations, len(disabled), best_cost, search_time, stream_time, time.time() - start_time))
 
         real_plan, evaluations = solve_eager(problem, evaluations, solve=(solve and reattempt), planner=planner,
                                              max_time=(
@@ -353,14 +353,14 @@ def dual_focused(problem, max_time=INF, max_cost=INF, terminate_cost=INF, effort
                                   max_cost=min(best_cost, max_cost), verbose=verbose_search, **kwargs)
         search_time += (time.time() - t0)
         if verbose:
-            print 'Actions | Length: {} | Cost: {} | {}'.format(get_length(opt_plan, universe.evaluations),
-                                                                get_cost(opt_plan, universe.evaluations), opt_plan)
+            print ('Actions | Length: {} | Cost: {} | {}'.format(get_length(opt_plan, universe.evaluations),
+                                                                get_cost(opt_plan, universe.evaluations), opt_plan))
 
         if use_context:
             success, negative_atoms = evaluate_negative_atoms(
                 universe, evaluations, opt_plan)
             if verbose:
-                print 'External | Success: {} | {}'.format(success, negative_atoms)
+                print ('External | Success: {} | {}'.format(success, negative_atoms))
         else:
             success, negative_atoms = True, set()
 
@@ -371,7 +371,7 @@ def dual_focused(problem, max_time=INF, max_cost=INF, terminate_cost=INF, effort
             universe, evaluations, opt_plan, bound_streams, start_time, max_time, defer, **kwargs)
         stream_time += (time.time() - t0)
         if verbose:
-            print 'Streams | Length: {} | {}'.format(get_length(stream_plan, []), stream_plan)
+            print ('Streams | Length: {} | {}'.format(get_length(stream_plan, []), stream_plan))
 
         if stream_plan:
             if revisit:
@@ -385,7 +385,7 @@ def dual_focused(problem, max_time=INF, max_cost=INF, terminate_cost=INF, effort
                 reattempt = call_streams(
                     evaluations, disabled, stream_plan, negative_atoms, verbose=verbose)
             if verbose:
-                print 'Reattempt:', reattempt
+                print ('Reattempt:', reattempt)
             continue
 
         cost = get_cost(action_plan, universe.evaluations)

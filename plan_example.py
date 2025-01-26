@@ -243,6 +243,6 @@ def solve_task(kitchen_params, initial_poses, object_sizes, expid_pour, expid_sc
 
 
 if __name__ == '__main__':
-    print 'Sampling task instances...'
+    print ('Sampling task instances...')
     task = sample_task_instance()
     solve_task(**task)

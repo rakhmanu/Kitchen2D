@@ -1,5 +1,5 @@
 # Author: Zi Wang
-import cPickle as pickle
+import pickle
 import os
 import active_learners.helper as helper
 from active_learners.active_learner import run_ActiveLearner
