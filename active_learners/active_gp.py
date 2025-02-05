@@ -1,10 +1,12 @@
-# Author: Zi Wang
+# Author: Ulzhalgas Rakhman
 import numpy as np
 import GPy as gpy
 from scipy.stats import norm
 from . import helper
 from active_learners.active_learner import ActiveLearner
 import time
+
+
 
 class ActiveGP(ActiveLearner):
     '''
@@ -83,7 +85,7 @@ class ActiveGP(ActiveLearner):
         self.best_beta = -y_star
         self.beta = norm.ppf(self.betalambda*norm.cdf(self.best_beta))
         if self.best_beta < 0:
-            raw_input('Warning! Cannot find any parameter to be super level set \
+            input('Warning! Cannot find any parameter to be super level set \
                    with more than 0.5 probability. Are you sure to continue?')
         if self.beta > self.best_beta:
             raise ValueError('Beta cannot be larger than best beta.')
@@ -216,29 +218,73 @@ class ActiveGP(ActiveLearner):
         '''
         Select the next input to query.
         '''
-        if self.query_type is 'best_prob':
+        if self.query_type == 'best_prob':
             return self.query_best_prob(context)
-        elif self.query_type is 'lse':
+        elif self.query_type == 'lse':
             return self.query_lse(context)
 
+
+    @staticmethod
+    def flatten_structure(obj):
+        """Flattens a nested structure (e.g., lists, tuples) into a 1D array."""
+        if isinstance(obj, (list, tuple)):
+            return np.concatenate([ActiveGP.flatten_structure(i) for i in obj])
+        elif isinstance(obj, np.ndarray):
+            if obj.ndim > 1:
+                return obj.flatten()
+            else:
+                return obj
+        else:
+            return np.array(obj)
+
+
+    # Now, use this function in your retrain method
     def retrain(self, newx=None, newy=None):
         '''
         Train the GP on all the training data again.
         '''
         if newx is not None and newy is not None:
+            newx = np.array(newx, dtype=float)
+            newy = np.array(newy, dtype=float)
             self.xx = np.vstack((self.xx, newx))
             self.yy = np.vstack((self.yy, newy))
+
+        # Flatten self.yy using the updated function
+        self.yy = self.flatten_structure(self.yy)
+
+        # Ensure self.xx is a numpy array of floats
+        self.xx = np.array(self.xx, dtype=np.float64)
+
+        # Ensure self.yy is a numpy array of floats and reshape to (N, 1)
+        self.yy = np.array(list(self.yy), dtype=np.float64).reshape(-1, 1)
+
+        # Debugging: Check type and shape of self.xx and self.yy
+        print(f"Type of self.xx: {type(self.xx)}")
+        print(f"Shape of self.xx: {self.xx.shape}")
+        print(f"Type of self.yy: {type(self.yy)}")
+        print(f"Shape of self.yy: {self.yy.shape}")
+
+        # Kernel creation and GP model training
         lengthscale = (self.func.x_range[1] - self.func.x_range[0]) * 0.05
-        k = gpy.kern.Matern52(self.func.x_range.shape[1], ARD=True, lengthscale=lengthscale)
+        k = gpy.kern.Matern52(input_dim=self.func.x_range.shape[1], ARD=True, lengthscale=lengthscale)
+
+        print(f"Kernel type: {type(k)}")
+        print(f"Kernel lengthscale: {k.lengthscale}")
+
+        # Ensure the model is created with the correct kernel
         self.model = gpy.models.GPRegression(self.xx, self.yy, k)
+
+        # Constrain the lengthscale and noise variance within bounds
         for i in range(self.func.dx):
             self.model.kern.lengthscale[i:i+1].constrain_bounded(self.func.lengthscale_bound[0][i],
                 self.func.lengthscale_bound[1][i], warning=False)
-        self.model['.*variance'].constrain_bounded(1e-1,2., warning=False)
-        self.model['Gaussian_noise.variance'].constrain_bounded(1e-4,0.01, warning=False)
-        # These GP hyper parameters need to be calibrated for good uncertainty predictions.
+
+        self.model['.*variance'].constrain_bounded(1e-1, 2., warning=False)
+        self.model['Gaussian_noise.variance'].constrain_bounded(1e-4, 0.01, warning=False)
+
+        # Optimize the model
         self.model.optimize(messages=False)
-        print (self.model)
+        print(self.model)
 
     def query_lse(self, context):
         '''

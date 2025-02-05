@@ -7,6 +7,7 @@ import numpy as np
 from .motion_planner import motion_planner
 from scipy.spatial import ConvexHull
 from . import kitchen_stuff as ks
+from Box2D import b2
 
 def create_gripper(world, lgripper_pos, rgripper_pos, 
                    init_angle, pj_motorSpeed, 
@@ -287,53 +288,6 @@ class Gripper(object):
         while t < timeout / TIME_STEP:
             t += self.apply_lowlevel_control(pos, angle)
 
-    
-
-    def pourfluid(self, to_obj, rel_pos, dangle, exact_control=False,  
-             stop_ratio=1.0, topour_particles=1, p_range=SCREEN_WIDTH):
-        '''
-        Use the gripper to pour from the grapsed cup object to 
-        to_obj, another cup object.
-        Args:
-            to_obj: a Box2D body that resembles a cup.
-            rel_pos: relative position to to_obj.
-            dangle: a control parameter that controls the rotation angle
-            of the gripper when performing pouring.
-            exact_control: indicator of whether to stop before all the particles 
-            are poured.
-            stop_ratio: a ratio on the particles to be poured. 
-            The gripper starts to rotate back to verticle pose 
-            if the particles poured reaches this ratio. This is used 
-            only if exact_control is True.
-            topour_particles: number of the particles to pour from the grapsed cup.
-            p_range: horizontal distance to the to_obj, within which 
-            the particles' speed are used to see if pour is completed (all particles
-            stops moving).
-        Returns: 
-            an idicator of whether the pouring action is successful.
-            a score of the ratio of successfully poured particles.
-        '''
-        assert(self.attached)
-        dpos = to_obj.position + rel_pos
-        found = self.find_path(dpos, 0.)
-        if not found:
-            return False, 0
-        if self.planning:
-            return True, 1.
-        incupparticles, stopped = self.compute_post_grasp_mass()
-        n_particles = len(incupparticles)
-        assert n_particles > 0, 'No liquid in cup.'
-        stopped = False
-        t = 0
-        while (not stopped and t * TIME_STEP < 30.):
-            t += self.apply_lowlevel_control(dpos, dangle, maxspeed=0.1)
-            post_incupparticles, stopped = self.compute_post_grasp_mass(p_range)
-            if exact_control and n_particles - len(post_incupparticles) >= topour_particles*stop_ratio:
-                self.apply_lowlevel_control(dpos, 0, maxspeed=0.1)
-                break
-        in_to_cup, _, _ = incup(to_obj, incupparticles)
-        self.apply_lowlevel_control(dpos, 0., maxspeed=0.5)
-        return True, len(in_to_cup) * 1.0 / n_particles
 
     def pour(self, to_obj, rel_pos, dangle, exact_control=False,  
          stop_ratio=1.0, topour_particles=1, p_range=SCREEN_WIDTH, allow_empty=False):
@@ -365,7 +319,10 @@ class Gripper(object):
         '''
         assert(self.attached)
         
+        # Relative position for the pouring action
         dpos = to_obj.position + rel_pos
+        
+        # Find the path to the pouring position
         found = self.find_path(dpos, 0.)
         if not found:
             return False, 0
@@ -375,20 +332,22 @@ class Gripper(object):
         
         # Compute the mass of particles in the cup after grasping
         incupparticles, stopped = self.compute_post_grasp_mass()
-        
         n_particles = len(incupparticles)
         
-        # If empty cups are allowed, skip the assertion that requires liquid in the cup
+        # Check if liquid is present in the cup unless empty cups are allowed
         if not allow_empty:
             assert n_particles > 0, 'No liquid in cup.'
         
+        # Initialize stopped flag
         stopped = False
         t = 0
         
+        # Pouring loop (while pouring and within a time limit)
         while not stopped and t * TIME_STEP < 30.:
             t += self.apply_lowlevel_control(dpos, dangle, maxspeed=0.1)
             post_incupparticles, stopped = self.compute_post_grasp_mass(p_range)
             
+            # If exact control is set and enough particles have been poured
             if exact_control and n_particles - len(post_incupparticles) >= topour_particles * stop_ratio:
                 self.apply_lowlevel_control(dpos, 0, maxspeed=0.1)
                 break
@@ -399,6 +358,7 @@ class Gripper(object):
         
         # Return success status and ratio of successfully poured particles
         return True, len(in_to_cup) * 1.0 / n_particles
+
 
    
     def get_cup_feasible(self, from_obj):
@@ -826,6 +786,7 @@ class Gripper(object):
         Returns:
             indicator of whether the grasp is successful.
         '''
+        # Get the grasp positions
         dpos, dpos_up = self.get_grasp_poses(body, pos_ratio)
         
         # Ensure dpos and dpos_up are 2D vectors
@@ -833,36 +794,45 @@ class Gripper(object):
             dpos = dpos[:2]
         if len(dpos_up) > 2:
             dpos_up = dpos_up[:2]
-        
+
         self.open()  # Open gripper
 
-        # Try to find path for dpos_up first
+        # Attempt to find a path for dpos_up (above the cup)
         found = self.find_path(dpos_up, 0)
         if not found:
             return False
 
-        # Try to find path for dpos second
+        # Attempt to find a path for dpos (directly on the cup)
         found = self.find_path(dpos, 0)
         if not found:
             return False
 
-        self.close()  # Close gripper
+        self.close()  # Close the gripper
 
         # Debug logs for mass check before and after
-        print('mass before grasp check={}'.format(self.mass))
+        print('Mass before grasp check: {}'.format(self.mass))
         self.check_grasp(body)
-        print('mass after grasp check={}'.format(self.mass))
+        print('Mass after grasp check: {}'.format(self.mass))
 
         # Avoid collision checker thinking "on countertop" is a collision
-        dpos[1] += EPS
+        dpos[1] += EPS  # A small offset to ensure no collision with countertop
 
         # Apply low-level control with the final grasp position
         self.apply_lowlevel_control(dpos, 0)
 
-        return self.attached  # Return whether the gripper successfully attached
-    
-    
+        # Check if the gripper successfully attached
+        if self.attached:
+            # Apply a stronger upward force to help stabilize the cup after grasping
+            force_scale = self.attached_obj.mass * 0.5
+            body.ApplyForceToCenter(b2.vec2(0, 80), True)  # Increased force for stabilization
+            body.ApplyForceToCenter(b2.vec2(0, force_scale), True)
+            print("Grasp Successful and Stabilized.")
+            return True
+        else:
+            print("Grasp Failed.")
+            return False
 
+    
 
     def is_graspable(self, body):
         '''

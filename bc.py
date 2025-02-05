@@ -1,18 +1,15 @@
 import gym
 import numpy as np
 from gym import spaces
-from kitchen2d.kitchen_stuff import Kitchen2D
 import active_learners.helper as helper
 import kitchen2d.kitchen_stuff as ks
 from kitchen2d.gripper import Gripper
-from stable_baselines3 import SAC
-from stable_baselines3.common.vec_env import DummyVecEnv
+from sklearn.neural_network import MLPClassifier
+from kitchen2d.kitchen_stuff import Kitchen2D
+import pickle
 import matplotlib.pyplot as plt
 import os
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from sklearn.model_selection import train_test_split
+
 
 class KitchenEnv(gym.Env):
     def __init__(self, setting):
@@ -104,8 +101,6 @@ class KitchenEnv(gym.Env):
         # Return 5 values as expected by Stable Baselines3
         return state, reward, done, truncated, info
 
-
-
     def render(self):
         """Render the environment using matplotlib."""
         if not self.render_initialized:
@@ -160,14 +155,16 @@ class KitchenEnv(gym.Env):
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
 
-
-
     def _create_objects(self):
         """Create and initialize objects like gripper, cups, etc."""
         if self.cup1 is None:
-            # Get dimensions of objects from GP samples
-            pour_from_w, pour_from_h, pour_to_w, pour_to_h = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)[1]
-            scoop_w, scoop_h = helper.process_gp_sample(self.expid_scoop, exp='scoop', is_adaptive=True, flag_lk=False)[1]
+            # Convert the map object to a list and unpack
+            gp_sample_pour = list(helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)[1])
+            pour_from_w, pour_from_h, pour_to_w, pour_to_h = gp_sample_pour
+            
+            gp_sample_scoop = list(helper.process_gp_sample(self.expid_scoop, exp='scoop', is_adaptive=True, flag_lk=False)[1])
+            scoop_w, scoop_h = gp_sample_scoop
+            
             holder_d = 0.5
 
             # Initialize objects only if they haven't been created yet
@@ -179,7 +176,6 @@ class KitchenEnv(gym.Env):
         """Close the environment."""
         self.kitchen.close()
         plt.close(self.fig)
-
 
 def make_env():
     setting = {
@@ -199,141 +195,67 @@ def make_env():
     env = KitchenEnv(setting)
     return env
 
-
-def collect_expert_data(env, model, num_episodes=50, save_path="expert_data.npz"):
-    observations = []
-    actions = []
+# Collect demonstration data for Behavior Cloning
+def collect_demonstration_data(env, num_episodes=10):
+    """Collect state-action pairs from the environment."""
+    demonstration_data = []  # List to store (state, action) pairs
 
     for episode in range(num_episodes):
-        obs, _ = env.reset()
+        obs = env.reset()  # Reset the environment at the start of each episode
         done = False
-
         while not done:
-            action, _ = model.predict(obs)  # Expert predicts actions
-            observations.append(obs)
-            actions.append(action)
-            obs, _, done, _, _ = env.step(action)
+            action = np.random.uniform(-1, 1, size=2)  # Replace with real agent behavior if available
+            demonstration_data.append((obs, action))  # Store (state, action) pair
+            obs, _, done, _ = env.step(action)  # Take a step in the environment
 
-    # Save data
-    np.savez(save_path, observations=np.array(observations), actions=np.array(actions))
-    print(f"Expert data collected and saved to {save_path}")
+    # Save the demonstration data
+    np.save("demonstration_data.npy", demonstration_data)
+    print(f"Collected {len(demonstration_data)} state-action pairs.")
+    return demonstration_data
 
-
-# 3. Behavior Cloning Model
-class BehaviorCloningModel(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(BehaviorCloningModel, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
-            nn.Linear(128, output_dim)
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-# 4. Train the BC Model
-def train_bc_model(data_path="expert_data.npz", model_save_path="behavior_cloning_model.pth", epochs=100, batch_size=64):
-    # Load expert data
-    data = np.load(data_path)
-    observations = data["observations"]
-    actions = data["actions"]
-
-    # Split data
-    obs_train, obs_test, act_train, act_test = train_test_split(observations, actions, test_size=0.2, random_state=42)
-
-    # Define model, loss, and optimizer
-    input_dim = obs_train.shape[1]
-    output_dim = act_train.shape[1]
-    model = BehaviorCloningModel(input_dim, output_dim)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
-    # Convert data to PyTorch tensors
-    obs_train_tensor = torch.FloatTensor(obs_train)
-    act_train_tensor = torch.FloatTensor(act_train)
-    obs_test_tensor = torch.FloatTensor(obs_test)
-    act_test_tensor = torch.FloatTensor(act_test)
-
-    # Training loop
-    for epoch in range(epochs):
-        model.train()
-        optimizer.zero_grad()
-
-        # Forward pass
-        predictions = model(obs_train_tensor)
-        loss = criterion(predictions, act_train_tensor)
-
-        # Backward pass
-        loss.backward()
-        optimizer.step()
-
-        # Evaluate on test data
-        model.eval()
-        with torch.no_grad():
-            test_predictions = model(obs_test_tensor)
-            test_loss = criterion(test_predictions, act_test_tensor)
-
-        print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item()}, Test Loss: {test_loss.item()}")
-
+# Train Behavior Cloning model using MLP
+def behavior_cloning(demo_data):
+    """Train a Behavior Cloning model using MLPClassifier."""
+    states, actions = zip(*demo_data)  # Unzip the demonstration data into states and actions
+    states = np.array(states)
+    actions = np.array(actions)
+    
+    # Define and train an MLP model
+    clf = MLPClassifier(hidden_layer_sizes=(64, 64), max_iter=500)
+    clf.fit(states, actions)
+    
     # Save the trained model
-    torch.save(model.state_dict(), model_save_path)
-    print(f"Model saved to {model_save_path}")
+    with open("behavior_cloning_model.pkl", "wb") as f:
+        pickle.dump(clf, f)
 
+    print("Behavior cloning model trained and saved.")
 
-# 5. Evaluate the BC Model
-def evaluate_bc_model(env, model_path="behavior_cloning_model.pth", num_episodes=50):
-    # Load the BC model
-    model = BehaviorCloningModel(input_dim=10, output_dim=2)  # Adjust dimensions as needed
-    model.load_state_dict(torch.load(model_path))
-    model.eval()
-
-    total_rewards = []
-    for episode in range(num_episodes):
-        obs, _ = env.reset()
-        done = False
-        episode_reward = 0
-
-        while not done:
-            obs_tensor = torch.FloatTensor(obs).unsqueeze(0)  # Add batch dimension
-            action = model(obs_tensor).detach().numpy().squeeze(0)  # Predict action
-            obs, reward, done, _, _ = env.step(action)
-            episode_reward += reward
-
-        total_rewards.append(episode_reward)
-        print(f"Episode {episode + 1}: Reward = {episode_reward}")
-
-    average_reward = sum(total_rewards) / num_episodes
-    print(f"Average Reward: {average_reward}")
-
-
-# 6. Main Function to Run the Pipeline
+# Main function to run the code
 def main():
-    # 6.1. Train SAC Model (Expert)
-    print("Training SAC expert...")
-    env = DummyVecEnv([make_env for _ in range(8)])  # Parallel environments
-    log_dir = os.path.join(os.getcwd(), "kitchen2d_tensorboard")
-    model = SAC('MlpPolicy', env, verbose=1, tensorboard_log=log_dir)
-    model.learn(total_timesteps=600)
-    model.save("pour_sac_model-ep-600")
-    print("SAC training completed.")
-
-    # 6.2. Collect Expert Data
-    print("Collecting expert data...")
-    env = make_env()  # Single environment for data collection
-    collect_expert_data(env=env, model=model, num_episodes=50, save_path="expert_data.npz")
-
-    # 6.3. Train BC Model
-    print("Training behavior cloning model...")
-    train_bc_model(data_path="expert_data.npz", model_save_path="behavior_cloning_model.pth", epochs=100)
-
-    # 6.4. Evaluate BC Model
-    print("Evaluating behavior cloning model...")
-    env = make_env()
-    evaluate_bc_model(env=env, model_path="behavior_cloning_model.pth", num_episodes=50)
+    # Set up environment settings
+    setting = {
+        'do_gui': True,
+        'sink_w': 10.,
+        'sink_h': 5.,
+        'sink_d': 1.,
+        'sink_pos_x': -3.,
+        'left_table_width': 50.,
+        'right_table_width': 50.,
+        'faucet_h': 12.,
+        'faucet_w': 5.,
+        'faucet_d': 0.5,
+        'planning': False,
+        'overclock': 50
+    }
+    
+    # Create environment
+    env = KitchenEnv(setting)
+    
+    # Collect demonstration data (either from an expert or random actions)
+    demo_data = collect_demonstration_data(env, num_episodes=10)
+    
+    # Apply Behavior Cloning on the collected data
+    behavior_cloning(demo_data)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
-from ss.model.functions import Predicate, NonNegFunction, rename_functions, initialize, TotalCost, Increase
-from ss.model.problem import Problem, dump_evaluations, get_length, get_cost
-from ss.model.operators import Action, Axiom
-from ss.model.streams import GenStream, TestStream
-from ss.algorithms.incremental import incremental
-from ss.utils import INF
+from .ss.model.functions import Predicate, NonNegFunction, rename_functions, initialize, TotalCost, Increase
+from .ss.model.problem import Problem, dump_evaluations, get_length, get_cost
+from .ss.model.operators import Action, Axiom
+from .ss.model.streams import GenStream, TestStream
+from .ss.algorithms.incremental import incremental
+from .ss.utils import INF
 
 import numpy as np
 import math
@@ -69,7 +69,7 @@ def create_problem(cupSize=(3, 4),
         result = (faucetPos[0] - 1 <= x <= faucetPos[0] + 1) and (faucetPos[1] -
                                                                   cupSize[1] - 1 <= y <= faucetPos[1] - cupSize[1]) and (-0.05 <= z <= 0.05)
         if verboseFns and not result:
-            print 'cannot get water from:', p
+            print ('cannot get water from:', p)
         return result
 
     def fill_cost(pos):
@@ -123,14 +123,14 @@ def create_problem(cupSize=(3, 4),
         result = (domain[0][0] <= x <= domain[0][1]) and (
             domain[1][0] <= y <= domain[1][1]) and (domain[2][0] <= z <= domain[2][1])
         if verboseFns and not result:
-            print 'not legal:', rp
+            print ('not legal:', rp)
         return result
 
     def randPos():
         while True:
             pos = tuple(random.uniform(a[0], a[1]) for a in domain)
             if verboseFns:
-                print 'randPos:', pos
+                print ('randPos:', pos)
             yield (pos,)
 
     def genMove(p):
@@ -138,7 +138,7 @@ def create_problem(cupSize=(3, 4),
             pos = tuple(random.uniform(-1, 1) * maxMoveDist + a for a in p)
             if distance(pos, p) < maxMoveDist and legalTest(pos):
                 if verboseFns:
-                    print 'genMove:', pos
+                    print ('genMove:', pos)
                 yield (pos,)
 
     def genClosePos(p):
@@ -146,7 +146,7 @@ def create_problem(cupSize=(3, 4),
             pos = tuple(random.uniform(-1, 1) * goalPosEps + a for a in p)
             if (distance(pos, p) < goalPosEps) and legalTest(pos):
                 if verboseFns:
-                    print 'genClosePos:', pos
+                    print ('genClosePos:', pos)
                 yield (pos,)
 
     def genPourPos(kpos):
@@ -159,10 +159,10 @@ def create_problem(cupSize=(3, 4),
             endpos = (x, y, np.pi / 1.4 * np.sign(x - kpos[0]))
             if legalTest(initpos) and legalTest(endpos):
                 if verboseFns:
-                    print 'genPourPos:', initpos, endpos
+                    print ('genPourPos:', initpos, endpos)
                 yield (initpos, endpos)
             elif verboseFns:
-                print 'genPourPos illegal:', initpos, endpos
+                print ('genPourPos illegal:', initpos, endpos)
 
     def genGetWaterPos():
         while True:
@@ -171,7 +171,7 @@ def create_problem(cupSize=(3, 4),
                    0)
             if legalTest(pos):
                 if verboseFns:
-                    print 'genGetWaterPos:', pos
+                    print ('genGetWaterPos:', pos)
                 yield (pos,)
 
     streams = [
@@ -254,11 +254,11 @@ TEST_ARGS = {
 def main(argv):
     testNum = int(argv[0]) if argv else 0
 
-    print 'Test number', testNum
-    print 'Args = ', TEST_ARGS[testNum]
+    print ('Test number', testNum)
+    print ('Args = ', TEST_ARGS[testNum])
 
     problem = create_problem(verboseFns=False, **TEST_ARGS[testNum])
-    print problem
+    print (problem)
 
     plan, evaluations = incremental(problem,
                                     planner='ff-astar',
@@ -268,13 +268,13 @@ def main(argv):
                                     verbose_search=False)
 
     if plan is None:
-        print '\nFailed to find a plan'
+        print ('\nFailed to find a plan')
         return
-    print '\nFound a plan'
-    print 'Length:', get_length(plan, evaluations)
-    print 'Cost:', get_cost(plan, evaluations) / SCALE_COST
+    print ('\nFound a plan')
+    print ('Length:', get_length(plan, evaluations))
+    print ('Cost:', get_cost(plan, evaluations) / SCALE_COST)
     for i, (action, args) in enumerate(plan):
-        print i, action, list(args)
+        print (i, action, list(args))
 
 
 if __name__ == '__main__':

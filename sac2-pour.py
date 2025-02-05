@@ -163,7 +163,7 @@ class KitchenEnv(gym.Env):
         if self.cup1 is None:
             # Get dimensions of objects from GP samples
             pour_from_w, pour_from_h, pour_to_w, pour_to_h = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)[1]
-            scoop_w, scoop_h = helper.process_gp_sample(self.expid_scoop, exp='scoop', is_adaptive=True, flag_lk=False)[1]
+            # scoop_w, scoop_h = helper.process_gp_sample(self.expid_scoop, exp='scoop', is_adaptive=True, flag_lk=False)[1]
             holder_d = 0.5
 
             # Initialize objects only if they haven't been created yet
