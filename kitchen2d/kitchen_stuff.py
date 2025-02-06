@@ -2,7 +2,6 @@
 from Box2D import *
 from Box2D.b2 import *
 from .kitchen_constants import *
-
 import pygame
 import numpy as np
 
@@ -33,7 +32,7 @@ class guiWorld:
             #'sensor': (155, 155, 155, 255), # To visualize the sensor
             'default': (81, 81, 81, 255),
             'faucet': (175, 175, 175, 255),
-            'water': (173, 216, 230),
+            'water': (173, 216, 230, 255),
             'block': (0, 99, 0),
             'coffee': (165, 42, 42),
             'cream': (225, 225, 225),
@@ -52,6 +51,7 @@ class guiWorld:
             vertices = [(self.screen_origin + body.transform*v)
                         * PPM for v in polygon.vertices]
             vertices = [(v[0], SCREEN_HEIGHT_PX-v[1]) for v in vertices]
+            #print(f"Drawing polygon with vertices: {vertices}")
             color = self.colors.get(body.userData, self.colors['default'])
 
             pygame.draw.polygon(self.screen, color, vertices)
@@ -59,6 +59,7 @@ class guiWorld:
         def my_draw_circle(circle, body, fixture):
             position = (self.screen_origin + body.transform*circle.pos)*PPM
             position = (position[0], SCREEN_HEIGHT_PX-position[1])
+            #print(f"Drawing circle at position: {position}") 
             color = self.colors.get(body.userData, self.colors['default'])
             pygame.draw.circle(self.screen, color, [int(x) for x in position],
                                int(circle.radius*PPM))
@@ -226,6 +227,7 @@ class Kitchen2D(b2WorldInterface):
             print(f"for {i} creating particle at position: {particle_position}")
             self.liquid.make_one_particle(particle_position, userData)
 
+
 def sensor_touching_test(sensor):
     '''
     Indicator of whether any Box2D body (other than the ones 
@@ -253,7 +255,7 @@ def get_body_vertices(body):
     return vertices
 
 class Liquid(object):
-    def __init__(self, world, liquid_frequency=0.2, density=0.01, friction=0.0, radius=0.05, shape_type='circle', liquid_name='water'):
+    def __init__(self, world, liquid_frequency=0.2, density=0.01, friction=0.0, radius=0.2, shape_type='circle', liquid_name='water'):
         '''
         This class manages the liquid particles in the kitchen.
         Args:

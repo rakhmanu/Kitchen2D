@@ -9,7 +9,7 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 import matplotlib.pyplot as plt
 import os
-
+import math 
 class KitchenEnv(gym.Env):
     def __init__(self, setting):
         super(KitchenEnv, self).__init__()
@@ -18,6 +18,7 @@ class KitchenEnv(gym.Env):
         self.gripper = None
         self.cup1 = None
         self.cup2 = None
+        self.liquid = None
        
         self.action_space = spaces.Box(
             low=np.array([-1.0, -1.0, -np.pi]), 
@@ -79,6 +80,7 @@ class KitchenEnv(gym.Env):
                 self.gripper.place((15, 0), 0)
                 self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
                 print("Cup1 refilled with liquid again.")
+                
             else:
                 reward = -10
                 done = True
@@ -126,6 +128,10 @@ class KitchenEnv(gym.Env):
             water_particle = self.ax.plot(pos[0], pos[1], "bo", markersize=2)  
             self.water_plot.append(water_particle[0]) 
 
+        print(f"Total liquid particles in simulation: {len(self.kitchen.liquid.particles)}")
+        for i, particle in enumerate(self.kitchen.liquid.particles):
+            print(f"Particle {i}: Position {particle.position}")
+
 
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
@@ -142,7 +148,7 @@ class KitchenEnv(gym.Env):
             self.gripper = Gripper(self.kitchen, (0, 8), 0)
             self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
             self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
-            liquid = ks.Liquid(self.kitchen, radius=0.5, liquid_frequency=10.0) 
+            liquid = ks.Liquid(self.kitchen, radius=0.2, liquid_frequency=10.0) 
             self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')  
             print(f"Liquid particles in Liquid object: {len(liquid.particles)}")  
 
@@ -154,6 +160,7 @@ class KitchenEnv(gym.Env):
         self.cup1.position = (15, 0)
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
         print("Gripper reset to starting position")
+
 
     def close(self):
         """Close the environment."""
