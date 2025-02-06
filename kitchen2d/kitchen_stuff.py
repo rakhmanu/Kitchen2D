@@ -1,4 +1,4 @@
-# Author: Zi Wang
+# Author: Ulzhalgas Rakhman
 from Box2D import *
 from Box2D.b2 import *
 from .kitchen_constants import *
@@ -214,16 +214,17 @@ class Kitchen2D(b2WorldInterface):
         Generate N liquid particles named userData uniformly in an empty cup.
         '''
         assert np.abs(cup.angle) < 0.1, 'cup is not verticle'
-        grid_x = (cup.usr_w - cup.usr_d*2)/ self.liquid.radius / 2
-        grid_y = (cup.usr_w - cup.usr_d) / self.liquid.radius / 2
-        assert grid_x*grid_y > N, 'cup cannot hold {} particles'.format(N)
+        grid_x = (cup.usr_w - cup.usr_d * 2) / (self.liquid.radius * 2)
+        grid_y = (cup.usr_h - cup.usr_d) / (self.liquid.radius * 2)  
+        assert grid_x * grid_y >= N, 'Cup cannot hold {} particles'.format(N)
+        print(f"generating {N} liquid particles inside the cup")
         for i in range(N):
-            x, y = i % grid_x, i / grid_x
-            pos = (self.liquid.radius*(2*x+1)+cup.usr_d, self.liquid.radius*(2*y+1)+cup.usr_d)
-            self.liquid.make_one_particle(cup.position - cup.shift + pos, userData)
-
-
-
+            x, y = i % grid_x, i // grid_x  # Fix division with integer division
+            pos = (self.liquid.radius * (2 * x + 1) + cup.usr_d, 
+                self.liquid.radius * (2 * y + 1) + cup.usr_d)
+            particle_position = cup.position - cup.shift + pos
+            print(f"for {i} creating particle at position: {particle_position}")
+            self.liquid.make_one_particle(particle_position, userData)
 
 def sensor_touching_test(sensor):
     '''
@@ -276,7 +277,7 @@ class Liquid(object):
         self.particle_calls = 0
         self.world = world
         self.liquid_name = liquid_name
-        self.particle_color = (173, 216, 230)
+        self.particles = []
 
     def make_particles(self, pos):
         '''
@@ -294,16 +295,17 @@ class Liquid(object):
         '''
         Make one particle of name userData at position pos.
         '''
-        #print(f"Creating particle at position: {pos}")
+        print(f"Creating particle at position: {pos}")
         p = self.world.CreateDynamicBody(position=pos, userData=userData)
         p.CreateFixture(
             shape=self.shape,
             friction=self.friction,
             density=self.density
         )
-        p.color = self.particle_color 
         self.particles.append(p)
-        #print(f"Particle created at position: {p.position}")
+        print(f"Particle added to liquid: {p}")
+        
+    
 
 def make_body(kitchen, name, pose, args):
     '''

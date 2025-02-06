@@ -8,21 +8,17 @@ import time
 import active_learners.helper as helper
 
 SETTING = {
-    'do_gui': True,
+    'do_gui': False,  
     'left_table_width': 50.,
     'right_table_width': 50.,
     'planning': False,
-    'overclock': 50  # number of frames to skip when showing graphics.
+    'overclock': 5 
 }
-
-def query_gui(action_type, kitchen):
-    print('Enabling GUI for {}...'.format(action_type))
-    # kitchen.enable_gui()
 
 def main():
     kitchen = Kitchen2D(**SETTING)
 
-    # Enable GUI once at the beginning
+    # Enable GUI and ensure liquid rendering is enabled
     print('Initializing GUI...')
     kitchen.enable_gui()
 
@@ -38,9 +34,12 @@ def main():
     gripper = Gripper(kitchen, (0, 8), 0)
     cup1 = ks.make_cup(kitchen, (10, 0), 0, pour_from_w, pour_from_h, holder_d)
     cup2 = ks.make_cup(kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
-    liquid = ks.Liquid(kitchen, radius=0.2, liquid_frequency=1.0) 
-   
-    kitchen.gen_liquid_in_cup(cup1, N=10, userData='water')  
+
+    # Create and add liquid with higher particle count and visibility
+    liquid = ks.Liquid(kitchen, radius=0.5, liquid_frequency=10.0) 
+    kitchen.gen_liquid_in_cup(cup1, N=5, userData='water')  
+    print(f"Liquid particles in Liquid object: {len(liquid.particles)}")  
+    
 
     # Pick
     grasp, rel_x, rel_y, dangle, _, _, _, _ = gp_pour.sample(c_pour)
