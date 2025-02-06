@@ -220,14 +220,14 @@ class Kitchen2D(b2WorldInterface):
         assert grid_x * grid_y >= N, 'Cup cannot hold {} particles'.format(N)
         print(f"generating {N} liquid particles inside the cup")
         for i in range(N):
-            x, y = i % grid_x, i // grid_x  # Fix division with integer division
+            x, y = i % grid_x, i // grid_x  
             pos = (self.liquid.radius * (2 * x + 1) + cup.usr_d, 
                 self.liquid.radius * (2 * y + 1) + cup.usr_d)
             particle_position = cup.position - cup.shift + pos
             print(f"for {i} creating particle at position: {particle_position}")
             self.liquid.make_one_particle(particle_position, userData)
 
-
+    
 def sensor_touching_test(sensor):
     '''
     Indicator of whether any Box2D body (other than the ones 
@@ -255,7 +255,7 @@ def get_body_vertices(body):
     return vertices
 
 class Liquid(object):
-    def __init__(self, world, liquid_frequency=0.2, density=0.01, friction=0.0, radius=0.2, shape_type='circle', liquid_name='water'):
+    def __init__(self, world, liquid_frequency=1, density=0.01, friction=0.0, radius=0.2, shape_type='circle', liquid_name='water'):
         '''
         This class manages the liquid particles in the kitchen.
         Args:
@@ -307,6 +307,29 @@ class Liquid(object):
         self.particles.append(p)
         print(f"Particle added to liquid: {p}")
         
+    def remove_particles_in_cup(self, cup):
+        '''
+        Removes liquid particles inside a given cup.
+        '''
+        new_particles = []
+        for p in self.particles:
+            if not self.is_particle_inside_cup(p, cup):
+                new_particles.append(p)
+            else:
+                self.world.DestroyBody(p)
+
+        self.particles = new_particles
+
+    def is_particle_inside_cup(self, particle, cup):
+        '''
+        Checks if a given particle is inside a given cup.
+        '''
+        px, py = particle.position
+        cx, cy = cup.position - cup.shift
+
+        return (cx + cup.usr_d < px < cx + cup.usr_w - cup.usr_d) and \
+            (cy + cup.usr_d < py < cy + cup.usr_h)
+
     
 
 def make_body(kitchen, name, pose, args):

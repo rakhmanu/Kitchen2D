@@ -9,7 +9,7 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 import matplotlib.pyplot as plt
 import os
-
+ 
 class KitchenEnv(gym.Env):
     def __init__(self, setting):
         super(KitchenEnv, self).__init__()
@@ -78,10 +78,10 @@ class KitchenEnv(gym.Env):
                 done = True
                 print("Pouring successful! Reward assigned.")
                 self.gripper.place((15, 0), 0)
+                self.kitchen.liquid.remove_particles_in_cup(self.cup2)
                 self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
                 print("Cup1 refilled with liquid again.")
-                self.kitchen.gen_liquid_in_cup(self.cup2, N=0, userData='water')
-                print("Cup2 is emptied.")
+                
             else:
                 reward = -10
                 done = True
@@ -137,9 +137,7 @@ class KitchenEnv(gym.Env):
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
 
-        plt.pause(0.001) 
-
-
+        #plt.pause(0.001) 
 
     def _create_objects(self):
         """Create and initialize objects like gripper, cups, etc."""
@@ -149,9 +147,9 @@ class KitchenEnv(gym.Env):
             self.gripper = Gripper(self.kitchen, (0, 8), 0)
             self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
             self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
-            liquid = ks.Liquid(self.kitchen, radius=0.2, liquid_frequency=10.0) 
+            liquid = ks.Liquid(self.kitchen, radius=0.2, liquid_frequency=5.0) 
             self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')  
-            print(f"Liquid particles in Liquid object: {len(liquid.particles)}")  
+            
 
     def _reset_gripper(self):
         self.gripper.position = (0, 8)
@@ -162,6 +160,7 @@ class KitchenEnv(gym.Env):
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
         print("Gripper reset to starting position")
 
+
     def close(self):
         """Close the environment."""
         self.kitchen.close()
@@ -169,7 +168,7 @@ class KitchenEnv(gym.Env):
 
 def make_env():
     setting = {
-        'do_gui': True,  
+        'do_gui': False,  
         'left_table_width': 50.,
         'right_table_width': 50.,
         'planning': False,
@@ -182,7 +181,14 @@ def train_sac():
     env = DummyVecEnv([make_env])
 
     log_dir = os.path.join(os.getcwd(), "kitchen2d_tensorboard")
-    model = SAC('MlpPolicy', env, verbose=1, tensorboard_log=log_dir)
+    model = SAC(
+    'MlpPolicy', 
+    env, 
+    verbose=2, 
+    tensorboard_log=log_dir, 
+    learning_rate=1e-3,  
+    batch_size=64        
+)
     model.learn(total_timesteps=100000)  
     model.save("pour_sac_model")
 
