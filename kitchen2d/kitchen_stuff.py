@@ -314,7 +314,8 @@ class Liquid(object):
                 self.particle_calls = 0
             self.particle_calls += 1
         else:
-            for i in range(int(self.liquid_frequency)):
+            num_particles_to_create = max(2, min(30, int(self.liquid_frequency)))
+            for _ in range(num_particles_to_create):
                 self.make_one_particle(pos, self.liquid_name)
     def make_one_particle(self, pos, userData):
         '''
