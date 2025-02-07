@@ -170,12 +170,17 @@ def prepare_data(demo_filename="demonstrations.pkl"):
     return dataloader
 
 def train_behavior_cloning(dataloader):
-    model = BCNet(input_dim=10, output_dim=3)  
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    model = BCNet(input_dim=10, output_dim=3).to(device) 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
     
     for epoch in range(10):
         for states, actions in dataloader:
+            states, actions = states.to(device), actions.to(device)  
+
             optimizer.zero_grad()
             predicted_actions = model(states)
             loss = criterion(predicted_actions, actions)
@@ -183,9 +188,10 @@ def train_behavior_cloning(dataloader):
             optimizer.step()
         
         print(f"Epoch {epoch+1}, Loss: {loss.item()}")
-    
+
     torch.save(model.state_dict(), "behavior_cloning_model.pth")
     print("Behavior Cloning model saved.")
+
 
 
 if __name__ == "__main__":

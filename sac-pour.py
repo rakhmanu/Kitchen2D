@@ -9,6 +9,11 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 import matplotlib.pyplot as plt
 import os
+import torch
+print(torch.cuda.is_available())  
+print(torch.cuda.device_count()) 
+print(torch.cuda.get_device_name(0))  
+
  
 class KitchenEnv(gym.Env):
     def __init__(self, setting):
@@ -192,7 +197,8 @@ def train_sac():
     verbose=2, 
     tensorboard_log=log_dir, 
     learning_rate=1e-3,  
-    batch_size=64        
+    batch_size=64,
+    device = "cuda"        
 )
     model.learn(total_timesteps=100000)  
     model.save("pour_sac_model")
