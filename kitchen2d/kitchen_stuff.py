@@ -199,21 +199,44 @@ class Kitchen2D(b2WorldInterface):
                 shapes=[b2PolygonShape(box=shape)],
                 userData='countertop')
 
-    def step(self):
+    #def step(self):
         '''
         Wrapper of step function of b2WorldInterface. It includes simulations 
         for liquid generated from the faucet.
         '''
-        if (not self.planning) and (not self.disable_liquid) and sensor_touching_test(self.sensor):
-            pos = np.random.normal(0, 0.1, size=(2)) + \
-                np.array(self.faucet_location)
-            self.liquid.make_particles(pos)
-        super(Kitchen2D, self).step()
+    #    if (not self.planning) and (not self.disable_liquid) and sensor_touching_test(self.sensor):
+    #        pos = np.random.normal(0, 0.1, size=(2)) + \
+    #            np.array(self.faucet_location)
+    #        self.liquid.make_particles(pos)
+    #    super(Kitchen2D, self).step()
+
 
     def gen_liquid_in_cup(self, cup, N, userData='water'):
         '''
         Generate N liquid particles named userData uniformly in an empty cup.
         '''
+        # Assuming cup.position has x, y coordinates and the cup's rotation can be inferred from the position.
+        if np.abs(cup.position[0]) > 0.1:  # Example: check if the cup is not centered (tilted position)
+            print(f"Warning: Cup is not vertical. Adjusting cup to a vertical position.")
+            cup.position = (0, cup.position[1])  # Resetting cup's position to upright vertically along the y-axis
+        
+        # Proceed with generating liquid particles if the cup is now vertical
+        grid_x = (cup.usr_w - cup.usr_d * 2) / (self.liquid.radius * 2)
+        grid_y = (cup.usr_h - cup.usr_d) / (self.liquid.radius * 2)  
+        assert grid_x * grid_y >= N, f'Cup cannot hold {N} particles'
+        print(f"Generating {N} liquid particles inside the cup")
+        
+        for i in range(N):
+            x, y = i % grid_x, i // grid_x  
+            pos = (self.liquid.radius * (2 * x + 1) + cup.usr_d, 
+                self.liquid.radius * (2 * y + 1) + cup.usr_d)
+            particle_position = cup.position - cup.shift + pos
+            print(f"Creating particle {i} at position: {particle_position}")
+            self.liquid.make_one_particle(particle_position, userData)
+    
+'''
+
+    def gen_liquid_in_cup(self, cup, N, userData='water'):
         assert np.abs(cup.angle) < 0.1, 'cup is not verticle'
         grid_x = (cup.usr_w - cup.usr_d * 2) / (self.liquid.radius * 2)
         grid_y = (cup.usr_h - cup.usr_d) / (self.liquid.radius * 2)  
@@ -226,7 +249,7 @@ class Kitchen2D(b2WorldInterface):
             particle_position = cup.position - cup.shift + pos
             print(f"for {i} creating particle at position: {particle_position}")
             self.liquid.make_one_particle(particle_position, userData)
-
+'''
     
 def sensor_touching_test(sensor):
     '''
