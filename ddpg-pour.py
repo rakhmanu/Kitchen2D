@@ -5,7 +5,7 @@ from kitchen2d.kitchen_stuff import Kitchen2D
 import active_learners.helper as helper
 import kitchen2d.kitchen_stuff as ks
 from kitchen2d.gripper import Gripper
-from stable_baselines3 import SAC
+from stable_baselines3 import DDPG
 from stable_baselines3.common.vec_env import DummyVecEnv
 import matplotlib.pyplot as plt
 import os
@@ -74,14 +74,9 @@ class KitchenEnv(gym.Env):
             print(f"Pouring result: {pour_successful}, Position Ratio: {pos_ratio}")
 
             if pour_successful and pos_ratio > 0:
-                if pos_ratio == 1:
-                    reward = 10
-                    done = True
-                    print("Pouring successful with Position Ratio of 1! Reward assigned.")
-                else:
-                    reward = -10
-                    done = True
-                    print(f"Pouring successful, but Position Ratio is not 1. Penalty assigned.")
+                reward = 10
+                done = True
+                print("Pouring successful! Reward assigned.")
                 self.gripper.place((15, 0), 0)
                 self.kitchen.liquid.remove_particles_in_cup(self.cup2)
                 self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
@@ -186,7 +181,7 @@ def train_sac():
     env = DummyVecEnv([make_env])
 
     log_dir = os.path.join(os.getcwd(), "kitchen2d_tensorboard")
-    model = SAC(
+    model = DDPG(
     'MlpPolicy', 
     env, 
     verbose=2, 
@@ -195,7 +190,7 @@ def train_sac():
     batch_size=64        
 )
     model.learn(total_timesteps=100000)  
-    model.save("pour_sac_model")
+    model.save("pour_ddpg_model")
 
 
 class ModifiedKitchenEnv(KitchenEnv):
@@ -218,11 +213,11 @@ def evaluate_on_new_env():
     }
     env = ModifiedKitchenEnv(setting)
 
-    model_path = "pour_sac_model" 
+    model_path = "pour_ddpg_model" 
     if not os.path.exists(model_path + ".zip"):
         raise FileNotFoundError("Trained SAC model not found.")
 
-    model = SAC.load(model_path)
+    model = DDPG.load(model_path)
     
     num_episodes = 50
     rewards = []
