@@ -22,32 +22,32 @@ class KitchenEnv(gym.Env):
         self.cup1 = None
         self.cup2 = None
         self.liquid = None
-       
+        
         self.action_space = spaces.Box(
             low=np.array([-1.0, -1.0, -np.pi]), 
             high=np.array([1.0, 1.0, np.pi]), 
             dtype=np.float32
         )
-
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32)
-
-        self.expid_pour = 0
-        self.expid_scoop = 0
-
+        
+        # Observation space now includes cup size (width, height)
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(12,), dtype=np.float32  
+        )  
+        
         self.objects_created = False
+        self.demonstration_data = []
         self._create_objects()  
 
-        self.fig, self.ax = plt.subplots()
-        self.render_initialized = False
-        self.demonstration_data = [] 
     def reset(self, seed=None, **kwargs):
         np.random.seed(seed)
+        
         if not self.objects_created:
             self._create_objects()
             self.objects_created = True
         
-        state = np.zeros(self.observation_space.shape)  
-        info = {}  
+        # Get initial state including cup size
+        state = self._get_state()
+        info = {}
         return state, info
 
     def step(self, action):
@@ -59,105 +59,75 @@ class KitchenEnv(gym.Env):
         self.gripper.find_path((new_x, new_y), new_theta)  
         self.gripper.release()
         grasp_successful = self.gripper.grasp(self.cup1, action[:2])
-        self.render()
-        state = np.zeros(self.observation_space.shape)
+        
+        state = self._get_state()
         self.demonstration_data.append((state, action))  
 
-        if grasp_successful:
-            gp_pour, c_pour = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)
-            grasp, rel_x, rel_y, dangle, *_ = gp_pour.sample(c_pour)
-            dangle *= np.sign(rel_x)
-
-            pour_successful, pos_ratio = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)
-
-            if pour_successful and pos_ratio > 0:
+        if grasp_successful and pos_ratio>0.9:
+            pour_successful, pos_ratio = self.gripper.pour(self.cup2, (0, 0), 0) 
+            if pour_successful and pos_ratio > 0.9:  # Stricter success criterion
                 reward = 10
                 done = True
-                self.gripper.place((15, 0), 0)
-                self.kitchen.liquid.remove_particles_in_cup(self.cup2)
-                self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
-                
             else:
                 reward = -10
                 done = True
                 self._reset_cup1()
-                self._reset_gripper()
         else:
             reward = -10
             done = True
-            self._reset_gripper()
+        
+        return self._get_state(), reward, done, False, {}
 
-        self.render()
-        info = {}
-        return np.zeros(self.observation_space.shape), reward, done, False, info
+    def _get_state(self):
+        # Get number of liquid particles in cup1
+        num_liquid_particles = len(self.kitchen.liquids) if hasattr(self.kitchen, "liquids") else 0
+        cup1_size = getattr(self.cup1, "userData", {}).get("size", (0, 0))
+        cup2_size = getattr(self.cup2, "userData", {}).get("size", (0, 0))
 
-    def render(self):
-        if not self.render_initialized:
-            self.ax.set_xlim(-30, 30)
-            self.ax.set_ylim(-10, 20)
-            self.gripper_plot, = self.ax.plot([], [], "ro", label="Gripper") 
-            self.cup1_plot, = self.ax.plot([], [], "yo", label="Cup1")        
-            self.cup2_plot, = self.ax.plot([], [], "go", label="Cup2")        
-            self.water_plot = []
-            self.ax.legend()
-            self.render_initialized = True
+        return np.array([
+            self.gripper.position[0], self.gripper.position[1], self.gripper.angle,
+            self.cup1.position[0], self.cup1.position[1], cup1_size[0], cup1_size[1],
+            self.cup2.position[0], self.cup2.position[1], cup2_size[0], cup2_size[1],
+            num_liquid_particles  # Add number of liquid particles
+        ])
 
-        self.gripper_plot.set_data(self.gripper.position[0], self.gripper.position[1])
-        self.cup1_plot.set_data(self.cup1.position[0], self.cup1.position[1])
-        self.cup2_plot.set_data(self.cup2.position[0], self.cup2.position[1])
 
-        for water_particle in self.water_plot:
-            water_particle.remove() 
-
-        self.water_plot = []  
-
-        for particle in self.kitchen.liquid.particles:
-            pos = particle.position  
-            water_particle = self.ax.plot(pos[0], pos[1], "bo", markersize=2)  
-            self.water_plot.append(water_particle[0]) 
-
-        self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
 
     def _create_objects(self):
-        if self.cup1 is None:
-            pour_from_w, pour_from_h, pour_to_w, pour_to_h = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)[1]
-            holder_d = 0.5
-            self.gripper = Gripper(self.kitchen, (0, 8), 0)
-            self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
-            self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
-            liquid = ks.Liquid(self.kitchen, radius=0.2, liquid_frequency=5.0) 
-            self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')  
-
-    def _reset_gripper(self):
-        self.gripper.position = (0, 8)
-
-    def _reset_cup1(self):
-        self.cup1.position = (15, 0)
-        self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
+        cup_sizes = [(5, 7), (6, 8), (7, 9)]  # Multiple cup sizes
+        size_idx = np.random.randint(len(cup_sizes))
+        w1, h1 = cup_sizes[size_idx]
+        w2, h2 = cup_sizes[np.random.randint(len(cup_sizes))]
+        
+        self.gripper = Gripper(self.kitchen, (0, 8), 0)
+        self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, w1, h1, 0.5)
+        self.cup1.userData = {"size": (w1, h1)}
+        self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, w2, h2, 0.5)
+        self.cup2.userData = {"size": (w2, h2)}
+        self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')  
 
     def save_demonstrations(self, filename="demonstrations.pkl"):
         with open(filename, "wb") as f:
             pickle.dump(self.demonstration_data, f)
         print(f"Demonstration data saved to {filename}")
 
+
 class BCNet(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim=12, output_dim=3):
         super(BCNet, self).__init__()
         self.fc1 = nn.Linear(input_dim, 64)
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, output_dim)
-
+    
     def forward(self, x):
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        return self.fc3(x)
 
 def prepare_data(demo_filename="demonstrations.pkl"):
     with open(demo_filename, "rb") as f:
         demonstrations = pickle.load(f)
-        
+    
     states = np.array([demo[0] for demo in demonstrations])
     actions = np.array([demo[1] for demo in demonstrations])
     
@@ -171,28 +141,22 @@ def prepare_data(demo_filename="demonstrations.pkl"):
 
 def train_behavior_cloning(dataloader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
-    model = BCNet(input_dim=10, output_dim=3).to(device) 
+    model = BCNet().to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
     
     for epoch in range(10):
         for states, actions in dataloader:
             states, actions = states.to(device), actions.to(device)  
-
             optimizer.zero_grad()
             predicted_actions = model(states)
             loss = criterion(predicted_actions, actions)
             loss.backward()
             optimizer.step()
-        
         print(f"Epoch {epoch+1}, Loss: {loss.item()}")
-
+    
     torch.save(model.state_dict(), "behavior_cloning_model.pth")
     print("Behavior Cloning model saved.")
-
-
 
 if __name__ == "__main__":
     setting = {
@@ -204,7 +168,7 @@ if __name__ == "__main__":
     }
     
     env = KitchenEnv(setting)
-    for episode in range(100):  
+    for episode in range(10):  
         state, info = env.reset()
         done = False
         while not done:

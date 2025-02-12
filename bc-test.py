@@ -31,7 +31,7 @@ class KitchenEnv(gym.Env):
             dtype=np.float32
         )
 
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(12,), dtype=np.float32)
 
         self.expid_pour = 0
         self.expid_scoop = 0
@@ -187,7 +187,7 @@ def evaluate_model(env, model, num_episodes=10):
     return success_rate, avg_reward
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = BCNet(input_dim=10, output_dim=3).to(device)
+model = BCNet(input_dim=12, output_dim=3).to(device)
 model.load_state_dict(torch.load("behavior_cloning_model.pth", map_location=device))
 model.eval()
 setting = {
