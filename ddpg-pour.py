@@ -10,6 +10,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 import matplotlib.pyplot as plt
 import os
 import torch
+from stable_baselines3.common.logger import configure
 print(torch.cuda.is_available())  
 print(torch.cuda.device_count()) 
 print(torch.cuda.get_device_name(0))  
@@ -93,12 +94,14 @@ class KitchenEnv(gym.Env):
                 done = True
                 print("Pouring failed. Penalty assigned.")
                 self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+                self.kitchen.liquid.remove_particles_outside_cup()
                 self._reset_cup1()
                 self._reset_gripper()
         else:
             reward = -10
             done = True
             print("Grasp failed. Penalty assigned.")
+            self.kitchen.liquid.remove_particles_in_cup(self.cup2)
             self._reset_gripper()
 
         self.render()
@@ -170,13 +173,13 @@ class KitchenEnv(gym.Env):
 
     def _reset_cup1(self):
         self.cup1.position = (15, 0)
+        self.kitchen.liquid.remove_particles_in_cup(self.cup1)
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
         print("Gripper reset to starting position")
 
 
     def close(self):
         """Close the environment."""
-        self.kitchen.close()
         plt.close(self.fig)
 
 def make_env():
@@ -190,10 +193,10 @@ def make_env():
     env = KitchenEnv(setting)
     return env
 
-def train_sac():
+def train_ddpg():
     env = DummyVecEnv([make_env])
 
-    log_dir = os.path.join(os.getcwd(), "kitchen2d_tensorboard")
+    log_dir = "./ddpg_logs" 
     model = DDPG(
     'MlpPolicy', 
     env, 
@@ -229,7 +232,7 @@ def evaluate_on_new_env():
 
     model_path = "pour_ddpg_model" 
     if not os.path.exists(model_path + ".zip"):
-        raise FileNotFoundError("Trained SAC model not found.")
+        raise FileNotFoundError("Trained DDPG model not found.")
 
     model = DDPG.load(model_path)
     
@@ -274,9 +277,10 @@ def evaluate_on_new_env():
 
 def main():
     print("Training the model with GUI...")
-    train_sac()
-    #print("Training completed. Now evaluating the model...")
-    #evaluate_on_new_env()
+    train_ddpg()
+    print("Training completed. Now evaluating the model...")
+    evaluate_on_new_env()
 
 if __name__ == "__main__":
     main()
+

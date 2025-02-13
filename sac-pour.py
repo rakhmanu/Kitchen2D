@@ -9,6 +9,7 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 import matplotlib.pyplot as plt
 import os
+from stable_baselines3.common.logger import configure
  
 class KitchenEnv(gym.Env):
     def __init__(self, setting):
@@ -47,7 +48,7 @@ class KitchenEnv(gym.Env):
         
         state = np.zeros(self.observation_space.shape)  
         info = {}  
-        return state, info
+        return state, info 
 
     def step(self, action):
         """Take a step in the environment based on the action."""
@@ -89,12 +90,14 @@ class KitchenEnv(gym.Env):
                 done = True
                 print("Pouring failed. Penalty assigned.")
                 self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+                self.kitchen.liquid.remove_particles_outside_cup()
                 self._reset_cup1()
                 self._reset_gripper()
         else:
             reward = -10
             done = True
             print("Grasp failed. Penalty assigned.")
+            self.kitchen.liquid.remove_particles_in_cup(self.cup2)
             self._reset_gripper()
 
         self.render()
@@ -157,8 +160,15 @@ class KitchenEnv(gym.Env):
             self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
             self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
             liquid = ks.Liquid(self.kitchen, radius=0.2, liquid_frequency=5.0) 
-            self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')  
-            
+            self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
+             
+    def _reset_liquid(self):
+        """Remove all particles and add exactly 10 new ones."""
+        print(f"Clearing old particles. Before: {len(self.kitchen.liquid.particles)}")
+        self.kitchen.liquid.remove_particles_in_cup(self.cup1)
+        self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+        self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
+        print(f"New total particles: {len(self.kitchen.liquid.particles)}")
 
     def _reset_gripper(self):
         self.gripper.position = (0, 8)
@@ -166,6 +176,7 @@ class KitchenEnv(gym.Env):
 
     def _reset_cup1(self):
         self.cup1.position = (15, 0)
+        self.kitchen.liquid.remove_particles_in_cup(self.cup1)
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
         print("Gripper reset to starting position")
 
@@ -188,7 +199,7 @@ def make_env():
 def train_sac():
     env = DummyVecEnv([make_env])
 
-    log_dir = os.path.join(os.getcwd(), "kitchen2d_tensorboard")
+    log_dir = "./sac_logs" 
     model = SAC(
     'MlpPolicy', 
     env, 
@@ -199,7 +210,7 @@ def train_sac():
 )
     model.learn(total_timesteps=100)  
     model.save("pour_sac_model")
-
+  
 
 def evaluate_on_trained_env():
     setting = {
@@ -217,9 +228,9 @@ def evaluate_on_trained_env():
 
     model = SAC.load(model_path)
     
-    num_episodes = 5
+    num_episodes = 20
     rewards = []
-    success_threshold = 5
+    success_threshold = 20
     success_episodes = 0
 
     for episode in range(num_episodes):

@@ -187,7 +187,7 @@ class KitchenEnv(gym.Env):
 
 def make_env():
     setting = {
-        'do_gui': True,  
+        'do_gui': False,  
         'left_table_width': 50.,
         'right_table_width': 50.,
         'planning': False,
