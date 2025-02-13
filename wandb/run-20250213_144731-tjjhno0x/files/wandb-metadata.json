@@ -1,0 +1,31 @@
+{
+  "os":  "Linux-6.8.0-52-generic-x86_64-with-glibc2.35",
+  "python":  "CPython 3.10.12",
+  "startedAt":  "2025-02-13T13:47:31.900188Z",
+  "program":  "/home/ulzhalgas/Kitchen2D/sac-pour2.py",
+  "codePath":  "sac-pour2.py",
+  "git":  {
+    "remote":  "git@github.com:rakhmanu/Kitchen2D.git",
+    "commit":  "682b1c6d7377fb10b05cf47a04152740d8741f81"
+  },
+  "email":  "11dulzhalgasr@gmail.com",
+  "root":  "/home/ulzhalgas/Kitchen2D",
+  "host":  "ulzhalgas-ThinkPad-X13-Yoga-Gen-2",
+  "executable":  "/usr/bin/python3",
+  "codePathLocal":  "sac-pour2.py",
+  "cpu_count":  4,
+  "cpu_count_logical":  8,
+  "disk":  {
+    "/":  {
+      "total":  "269648650240",
+      "used":  "47502626816"
+    }
+  },
+  "memory":  {
+    "total":  "16476606464"
+  },
+  "cpu":  {
+    "count":  4,
+    "countLogical":  8
+  }
+}

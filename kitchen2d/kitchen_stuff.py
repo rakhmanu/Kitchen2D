@@ -233,7 +233,8 @@ class Kitchen2D(b2WorldInterface):
             particle_position = cup.position - cup.shift + pos
             print(f"Creating particle {i} at position: {particle_position}")
             self.liquid.make_one_particle(particle_position, userData)
-    
+
+        
 '''
 
     def gen_liquid_in_cup(self, cup, N, userData='water'):
@@ -341,6 +342,17 @@ class Liquid(object):
                 new_particles.append(p)
             else:
                 self.world.DestroyBody(p)
+
+        self.particles = new_particles
+
+    def remove_particles_outside_cup(self):
+        """
+        Removes liquid particles outside the given cup.
+        This function ensures that particles outside the cup's region are removed.
+        """
+        new_particles = []
+        for p in self.particles:
+            self.world.DestroyBody(p)
 
         self.particles = new_particles
 

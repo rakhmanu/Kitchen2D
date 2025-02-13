@@ -14,34 +14,32 @@ import os
 import matplotlib.pyplot as plt
 
 class KitchenEnv(gym.Env):
-    def __init__(self, setting, test_mode=False):
+    def __init__(self, setting):
         super(KitchenEnv, self).__init__()
         self.setting = setting
         self.kitchen = Kitchen2D(**self.setting)
-        self.test_mode = test_mode  
-
         self.gripper = None
         self.cup1 = None
         self.cup2 = None
         self.liquid = None
-
+       
         self.action_space = spaces.Box(
             low=np.array([-1.0, -1.0, -np.pi]), 
             high=np.array([1.0, 1.0, np.pi]), 
             dtype=np.float32
         )
 
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32)
 
         self.expid_pour = 0
         self.expid_scoop = 0
+
         self.objects_created = False
-        self._create_objects()
+        self._create_objects()  
 
         self.fig, self.ax = plt.subplots()
         self.render_initialized = False
-        self.demonstration_data = []
-
+        self.demonstration_data = [] 
     def reset(self, seed=None, **kwargs):
         np.random.seed(seed)
         if not self.objects_created:
@@ -53,7 +51,6 @@ class KitchenEnv(gym.Env):
         return state, info
 
     def step(self, action):
-        """Take a step in the environment based on the action."""
         dx, dy, dtheta = action  
         
         new_x = np.clip(self.gripper.position[0] + dx, -30, 30)
@@ -61,54 +58,39 @@ class KitchenEnv(gym.Env):
         new_theta = np.clip(self.gripper.angle + dtheta, -np.pi, np.pi)
         self.gripper.find_path((new_x, new_y), new_theta)  
         self.gripper.release()
-        print(f"Trying to grasp at: {self.gripper.position}, Cup1 at: {self.cup1.position}")
         grasp_successful = self.gripper.grasp(self.cup1, action[:2])
-        
         self.render()
-        print(f"Gripper Position: {self.gripper.position}, Cup1 Position: {self.cup1.position}")
-        print(f"Grasp successful? {grasp_successful}")
+        state = np.zeros(self.observation_space.shape)
+        self.demonstration_data.append((state, action))  
 
         if grasp_successful:
-            print("Grasp successful!")
             gp_pour, c_pour = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)
             grasp, rel_x, rel_y, dangle, *_ = gp_pour.sample(c_pour)
             dangle *= np.sign(rel_x)
-            print(f"Pour attempt: rel_x={rel_x}, rel_y={rel_y}, dangle={dangle}")
+
             pour_successful, pos_ratio = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)
 
-            print(f"Pouring result: {pour_successful}, Position Ratio: {pos_ratio}")
-
-            if pour_successful and pos_ratio > 0.9:
+            if pour_successful and pos_ratio > 0:
                 reward = 10
                 done = True
-                print("Pouring successful! Reward assigned.")
                 self.gripper.place((15, 0), 0)
                 self.kitchen.liquid.remove_particles_in_cup(self.cup2)
                 self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
-                print("Cup1 refilled with liquid again.")
                 
             else:
                 reward = -10
                 done = True
-                print("Pouring failed. Penalty assigned.")
-                self.kitchen.liquid.remove_particles_in_cup(self.cup2)
                 self._reset_cup1()
                 self._reset_gripper()
         else:
             reward = -10
             done = True
-            print("Grasp failed. Penalty assigned.")
             self._reset_gripper()
 
         self.render()
-        state = np.array([
-            self.gripper.position[0], self.gripper.position[1], self.gripper.angle, 
-            self.cup1.position[0], self.cup1.position[1], 
-            self.cup2.position[0], self.cup2.position[1], 
-            len(self.kitchen.liquid.particles)
-        ])
         info = {}
-        return state, reward, done, False, info
+        return np.zeros(self.observation_space.shape), reward, done, False, info
+
     def render(self):
         if not self.render_initialized:
             self.ax.set_xlim(-30, 30)
@@ -139,21 +121,13 @@ class KitchenEnv(gym.Env):
 
     def _create_objects(self):
         if self.cup1 is None:
-            if self.test_mode:
-            
-                pour_from_w, pour_from_h = np.random.uniform(2, 5), np.random.uniform(3, 6)  
-                pour_to_w, pour_to_h = np.random.uniform(3, 6), np.random.uniform(4, 7) 
-            else:
-              
-                pour_from_w, pour_from_h, pour_to_w, pour_to_h = helper.process_gp_sample(
-                    self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False
-                )[1]
-
+            pour_from_w, pour_from_h, pour_to_w, pour_to_h = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)[1]
             holder_d = 0.5
             self.gripper = Gripper(self.kitchen, (0, 8), 0)
             self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
             self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
-            self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
+            liquid = ks.Liquid(self.kitchen, radius=0.2, liquid_frequency=5.0) 
+            self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')  
 
     def _reset_gripper(self):
         self.gripper.position = (0, 8)
@@ -161,6 +135,11 @@ class KitchenEnv(gym.Env):
     def _reset_cup1(self):
         self.cup1.position = (15, 0)
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
+
+    def save_demonstrations(self, filename="demonstrations.pkl"):
+        with open(filename, "wb") as f:
+            pickle.dump(self.demonstration_data, f)
+        print(f"Demonstration data saved to {filename}")
 
 class BCNet(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -175,45 +154,63 @@ class BCNet(nn.Module):
         x = self.fc3(x)
         return x
 
-def evaluate_model(env, model, num_episodes=10):
-    success_count = 0
-    total_reward = 0
+def prepare_data(demo_filename="demonstrations.pkl"):
+    with open(demo_filename, "rb") as f:
+        demonstrations = pickle.load(f)
+        
+    states = np.array([demo[0] for demo in demonstrations])
+    actions = np.array([demo[1] for demo in demonstrations])
+    
+    states_tensor = torch.tensor(states, dtype=torch.float32)
+    actions_tensor = torch.tensor(actions, dtype=torch.float32)
+    
+    dataset = TensorDataset(states_tensor, actions_tensor)
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
+    
+    return dataloader
 
-    for episode in range(num_episodes):
-        env = KitchenEnv(env.setting, test_mode=True) 
+def train_behavior_cloning(dataloader):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    model = BCNet(input_dim=10, output_dim=3).to(device) 
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    criterion = nn.MSELoss()
+    
+    for epoch in range(10):
+        for states, actions in dataloader:
+            states, actions = states.to(device), actions.to(device)  
+
+            optimizer.zero_grad()
+            predicted_actions = model(states)
+            loss = criterion(predicted_actions, actions)
+            loss.backward()
+            optimizer.step()
+        
+        print(f"Epoch {epoch+1}, Loss: {loss.item()}")
+
+    torch.save(model.state_dict(), "behavior_cloning_model.pth")
+    print("Behavior Cloning model saved.")
+
+
+
+if __name__ == "__main__":
+    setting = {
+        'do_gui': False,
+        'left_table_width': 50.,
+        'right_table_width': 50.,
+        'planning': False,
+        'overclock': 5 
+    }
+    
+    env = KitchenEnv(setting)
+    for episode in range(10000):  
         state, info = env.reset()
         done = False
-        episode_reward = 0
-
         while not done:
-            state_tensor = torch.tensor(state, dtype=torch.float32).to(device).unsqueeze(0)
-            with torch.no_grad():
-                action = model(state_tensor).cpu().numpy().squeeze()
-
+            action = np.random.uniform(low=-1.0, high=1.0, size=(3,)) 
             state, reward, done, _, info = env.step(action)
-            episode_reward += reward
-
-        total_reward += episode_reward
-        if episode_reward > 0:
-            success_count += 1
-
-    success_rate = success_count / num_episodes
-    avg_reward = total_reward / num_episodes
-    print(f"Success Rate on Different Cup Sizes: {success_rate * 100:.2f}%")
-    print(f"Average Reward: {avg_reward:.2f}")
-    return success_rate, avg_reward
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = BCNet(input_dim=8, output_dim=3).to(device)
-model.load_state_dict(torch.load("behavior_cloning_model.pth", map_location=device))
-model.eval()
-setting = {
-    'do_gui': True,
-    'left_table_width': 50.,
-    'right_table_width': 50.,
-    'planning': False,
-    'overclock': 5 
-}
-
-env = KitchenEnv(setting, test_mode=True)  
-evaluate_model(env, model, num_episodes=10)
+    
+    env.save_demonstrations()
+    dataloader = prepare_data()
+    train_behavior_cloning(dataloader)

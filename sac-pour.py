@@ -9,11 +9,6 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 import matplotlib.pyplot as plt
 import os
-import torch
-print(torch.cuda.is_available())  
-print(torch.cuda.device_count()) 
-print(torch.cuda.get_device_name(0))  
-
  
 class KitchenEnv(gym.Env):
     def __init__(self, setting):
@@ -31,7 +26,7 @@ class KitchenEnv(gym.Env):
             dtype=np.float32
         )
 
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
 
         self.expid_pour = 0
         self.expid_scoop = 0
@@ -63,7 +58,9 @@ class KitchenEnv(gym.Env):
         new_theta = np.clip(self.gripper.angle + dtheta, -np.pi, np.pi)
         self.gripper.find_path((new_x, new_y), new_theta)  
         self.gripper.release()
+        print(f"Trying to grasp at: {self.gripper.position}, Cup1 at: {self.cup1.position}")
         grasp_successful = self.gripper.grasp(self.cup1, action[:2])
+        
         self.render()
         print(f"Gripper Position: {self.gripper.position}, Cup1 Position: {self.cup1.position}")
         print(f"Grasp successful? {grasp_successful}")
@@ -73,20 +70,15 @@ class KitchenEnv(gym.Env):
             gp_pour, c_pour = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)
             grasp, rel_x, rel_y, dangle, *_ = gp_pour.sample(c_pour)
             dangle *= np.sign(rel_x)
-
+            print(f"Pour attempt: rel_x={rel_x}, rel_y={rel_y}, dangle={dangle}")
             pour_successful, pos_ratio = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)
 
             print(f"Pouring result: {pour_successful}, Position Ratio: {pos_ratio}")
 
-            if pour_successful and pos_ratio > 0:
-                if pos_ratio == 1:
-                    reward = 10
-                    done = True
-                    print("Pouring successful with Position Ratio of 1! Reward assigned.")
-                else:
-                    reward = -10
-                    done = True
-                    print(f"Pouring successful, but Position Ratio is not 1. Penalty assigned.")
+            if pour_successful and pos_ratio > 0.9:
+                reward = 10
+                done = True
+                print("Pouring successful! Reward assigned.")
                 self.gripper.place((15, 0), 0)
                 self.kitchen.liquid.remove_particles_in_cup(self.cup2)
                 self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
@@ -96,6 +88,7 @@ class KitchenEnv(gym.Env):
                 reward = -10
                 done = True
                 print("Pouring failed. Penalty assigned.")
+                self.kitchen.liquid.remove_particles_in_cup(self.cup2)
                 self._reset_cup1()
                 self._reset_gripper()
         else:
@@ -105,8 +98,14 @@ class KitchenEnv(gym.Env):
             self._reset_gripper()
 
         self.render()
+        state = np.array([
+            self.gripper.position[0], self.gripper.position[1], self.gripper.angle, 
+            self.cup1.position[0], self.cup1.position[1], 
+            self.cup2.position[0], self.cup2.position[1], 
+            len(self.kitchen.liquid.particles)
+        ])
         info = {}
-        return np.zeros(self.observation_space.shape), reward, done, False, info
+        return state, reward, done, False, info
 
     def render(self):
         """Render the environment using matplotlib."""
@@ -173,7 +172,6 @@ class KitchenEnv(gym.Env):
 
     def close(self):
         """Close the environment."""
-        self.kitchen.close()
         plt.close(self.fig)
 
 def make_env():
@@ -197,24 +195,13 @@ def train_sac():
     verbose=2, 
     tensorboard_log=log_dir, 
     learning_rate=1e-3,  
-    batch_size=64,
-    device = "cuda"        
+    batch_size=128        
 )
-    model.learn(total_timesteps=100000)  
+    model.learn(total_timesteps=100)  
     model.save("pour_sac_model")
 
 
-class ModifiedKitchenEnv(KitchenEnv):
-    def _create_objects(self):
-        if self.cup1 is None:
-            pour_from_w, pour_from_h, pour_to_w, pour_to_h = (4, 6, 8, 10)
-            holder_d = 0.55
-            self.gripper = Gripper(self.kitchen, (0, 8), 0)
-            self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
-            self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
-
-
-def evaluate_on_new_env():
+def evaluate_on_trained_env():
     setting = {
         'do_gui': False,  
         'left_table_width': 50.,
@@ -222,17 +209,17 @@ def evaluate_on_new_env():
         'planning': False,
         'overclock': 5 
     }
-    env = ModifiedKitchenEnv(setting)
+    env = KitchenEnv(setting)
 
-    model_path = "pour_sac_model" 
+    model_path = "pour_sac_model"
     if not os.path.exists(model_path + ".zip"):
         raise FileNotFoundError("Trained SAC model not found.")
 
     model = SAC.load(model_path)
     
-    num_episodes = 50
+    num_episodes = 5
     rewards = []
-    success_threshold = 50
+    success_threshold = 5
     success_episodes = 0
 
     for episode in range(num_episodes):
@@ -255,16 +242,30 @@ def evaluate_on_new_env():
     average_reward = sum(rewards) / num_episodes
     success_rate = success_episodes / num_episodes
 
-    print(f"Average reward over {num_episodes} episodes: {average_reward}")
+    print(f"Average reward: {average_reward}")
     print(f"Success rate: {success_rate * 100}%")
+
     env.close()
+
+    # Plot and save the rewards
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, num_episodes + 1), rewards, marker='o', linestyle='-', color='b', label="Episode Reward")
+    plt.xlabel("Episode Number")
+    plt.ylabel("Reward")
+    plt.title("Reward per Episode")
+    plt.legend()
+    plt.grid()
+    
+    # Save the plot as a PNG file
+    plt.savefig("reward_plot_sac.png", dpi=300)
+    print("Reward plot saved as reward_plot.png")
 
 
 def main():
     print("Training the model with GUI...")
     train_sac()
-    #print("Training completed. Now evaluating the model...")
-    #evaluate_on_new_env()
+    print("Training completed. Now evaluating the model...")
+    evaluate_on_trained_env()
 
 if __name__ == "__main__":
     main()

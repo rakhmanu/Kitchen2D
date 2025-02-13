@@ -31,7 +31,7 @@ class KitchenEnv(gym.Env):
         
         # Observation space now includes cup size (width, height)
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(12,), dtype=np.float32  
+            low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32  
         )  
         
         self.objects_created = False
@@ -51,6 +51,7 @@ class KitchenEnv(gym.Env):
         return state, info
 
     def step(self, action):
+        """Take a step in the environment based on the action."""
         dx, dy, dtheta = action  
         
         new_x = np.clip(self.gripper.position[0] + dx, -30, 30)
@@ -58,25 +59,54 @@ class KitchenEnv(gym.Env):
         new_theta = np.clip(self.gripper.angle + dtheta, -np.pi, np.pi)
         self.gripper.find_path((new_x, new_y), new_theta)  
         self.gripper.release()
+        print(f"Trying to grasp at: {self.gripper.position}, Cup1 at: {self.cup1.position}")
         grasp_successful = self.gripper.grasp(self.cup1, action[:2])
         
-        state = self._get_state()
-        self.demonstration_data.append((state, action))  
+        self.render()
+        print(f"Gripper Position: {self.gripper.position}, Cup1 Position: {self.cup1.position}")
+        print(f"Grasp successful? {grasp_successful}")
 
-        if grasp_successful and pos_ratio>0.9:
-            pour_successful, pos_ratio = self.gripper.pour(self.cup2, (0, 0), 0) 
-            if pour_successful and pos_ratio > 0.9:  # Stricter success criterion
+        if grasp_successful:
+            print("Grasp successful!")
+            gp_pour, c_pour = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)
+            grasp, rel_x, rel_y, dangle, *_ = gp_pour.sample(c_pour)
+            dangle *= np.sign(rel_x)
+            print(f"Pour attempt: rel_x={rel_x}, rel_y={rel_y}, dangle={dangle}")
+            pour_successful, pos_ratio = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)
+
+            print(f"Pouring result: {pour_successful}, Position Ratio: {pos_ratio}")
+
+            if pour_successful and pos_ratio > 0.9:
                 reward = 10
                 done = True
+                print("Pouring successful! Reward assigned.")
+                self.gripper.place((15, 0), 0)
+                self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+                self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
+                print("Cup1 refilled with liquid again.")
+                
             else:
                 reward = -10
                 done = True
+                print("Pouring failed. Penalty assigned.")
+                self.kitchen.liquid.remove_particles_in_cup(self.cup2)
                 self._reset_cup1()
+                self._reset_gripper()
         else:
             reward = -10
             done = True
-        
-        return self._get_state(), reward, done, False, {}
+            print("Grasp failed. Penalty assigned.")
+            self._reset_gripper()
+
+        self.render()
+        state = np.array([
+            self.gripper.position[0], self.gripper.position[1], self.gripper.angle, 
+            self.cup1.position[0], self.cup1.position[1], 
+            self.cup2.position[0], self.cup2.position[1], 
+            len(self.kitchen.liquid.particles)
+        ])
+        info = {}
+        return state, reward, done, False, info
 
     def _get_state(self):
         # Get number of liquid particles in cup1
