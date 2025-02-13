@@ -193,16 +193,6 @@ def train_sac():
     model.save("pour_sac_model")
 
 
-class ModifiedKitchenEnv(KitchenEnv):
-    def _create_objects(self):
-        if self.cup1 is None:
-            pour_from_w, pour_from_h, pour_to_w, pour_to_h = (4, 6, 8, 10)
-            holder_d = 0.55
-            self.gripper = Gripper(self.kitchen, (0, 8), 0)
-            self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
-            self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
-
-
 def evaluate_on_new_env():
     setting = {
         'do_gui': False,  
@@ -211,7 +201,7 @@ def evaluate_on_new_env():
         'planning': False,
         'overclock': 5 
     }
-    env = ModifiedKitchenEnv(setting)
+    env = KitchenEnv(setting)
 
     model_path = "pour_sac_model" 
     if not os.path.exists(model_path + ".zip"):
