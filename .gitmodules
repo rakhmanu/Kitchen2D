@@ -1,3 +1,7 @@
+[submodule "FastDownward"]
+        path = FastDownward
+        url = git@github.com:caelan/FastDownward.git
+
 [submodule "motion-planners"]
 	path = motion-planners
 	url = git@github.com:caelan/motion-planners.git

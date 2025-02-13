@@ -77,7 +77,7 @@ class KitchenEnv(gym.Env):
 
             print(f"Pouring result: {pour_successful}, Position Ratio: {pos_ratio}")
 
-            if pour_successful and pos_ratio > 0:
+            if pour_successful and pos_ratio > 0.9:
                 reward = 10
                 done = True
                 print("Pouring successful! Reward assigned.")
@@ -191,7 +191,7 @@ def train_sac():
     verbose=2, 
     tensorboard_log=log_dir, 
     learning_rate=1e-3,  
-    batch_size=64,
+    batch_size=128,
     device = "cuda"          
 )
     model.learn(total_timesteps=100000)  
@@ -252,8 +252,16 @@ def evaluate_on_new_env():
     print(f"Average reward over {num_episodes} episodes: {average_reward}")
     print(f"Success rate: {success_rate * 100}%")
     env.close()
-
-
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, num_episodes + 1), rewards, marker='o', linestyle='-', color='b', label="Episode Reward")
+    plt.xlabel("Episode Number")
+    plt.ylabel("Reward")
+    plt.title("Reward per Episode")
+    plt.legend()
+    plt.grid()
+    #plt.show()
+    plt.savefig("reward_plot.png", dpi=300)
+    print("Reward plot saved as reward_plot.png")
 def main():
     print("Training the model with GUI...")
     train_sac()
