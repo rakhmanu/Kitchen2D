@@ -187,7 +187,7 @@ class KitchenEnv(gym.Env):
 
 def make_env():
     setting = {
-        'do_gui': False,  
+        'do_gui': True,  
         'left_table_width': 50.,
         'right_table_width': 50.,
         'planning': False,
@@ -208,7 +208,34 @@ def train_sac():
     learning_rate=1e-3,  
     batch_size=128        
 )
-    model.learn(total_timesteps=100)  
+    model.learn(total_timesteps=200, log_interval=10) 
+    logger = configure(log_dir, ["stdout", "tensorboard"])
+    model.set_logger(logger)
+
+    total_episodes = 200
+    episode_rewards = []
+    for episode in range(total_episodes):
+        state = env.reset()
+
+        done = False
+        episode_reward = 0
+
+        while not done:
+            action, _ = model.predict(state, deterministic=True)
+            state, reward, done, info = env.step(action)
+            episode_reward += reward
+
+        episode_rewards.append(episode_reward)
+        print(f"Episode {episode + 1}: Reward = {episode_reward}")
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, total_episodes + 1), episode_rewards, marker='o', linestyle='-', color='b')
+    plt.xlabel("Episode")
+    plt.ylabel("Total Reward")
+    plt.title("Training Reward Progression")
+    plt.grid()
+    plt.savefig("training_rewards.png", dpi=300)
+    print("Training reward plot saved as training_rewards.png")
+    #plt.show()
     model.save("pour_sac_model")
   
 

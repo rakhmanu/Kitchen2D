@@ -195,7 +195,7 @@ def train_behavior_cloning(dataloader):
     
     writer = SummaryWriter("runs/behavior_cloning")  
 
-    for epoch in range(10000):
+    for epoch in range(100):
         epoch_loss = 0.0  
         for i, (states, actions) in enumerate(dataloader):
             states, actions = states.to(device), actions.to(device)  
@@ -215,9 +215,7 @@ def train_behavior_cloning(dataloader):
         writer.add_scalar("Loss/epoch", avg_epoch_loss, epoch + 1)  
         print(f"Epoch {epoch+1}, Loss: {avg_epoch_loss}")
 
-        
-        if (epoch + 1) % 5 == 0:
-            torch.save(model.state_dict(), f"behavior_cloning_model_epoch{epoch+1}.pth")
+    
 
     torch.save(model.state_dict(), "behavior_cloning_model.pth")
     print("Behavior Cloning model saved.")
@@ -228,7 +226,7 @@ def train_behavior_cloning(dataloader):
 
 if __name__ == "__main__":
     setting = {
-        'do_gui': False,
+        'do_gui': True,
         'left_table_width': 50.,
         'right_table_width': 50.,
         'planning': False,
@@ -236,7 +234,7 @@ if __name__ == "__main__":
     }
     
     env = KitchenEnv(setting)
-    for episode in range(50):  
+    for episode in range(200):  
         state, info = env.reset()
         done = False
         while not done:
