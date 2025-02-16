@@ -10,6 +10,9 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 import matplotlib.pyplot as plt
 import os
 import torch
+from stable_baselines3.common.logger import configure
+ 
+
 print(torch.cuda.is_available())  
 print(torch.cuda.device_count()) 
 print(torch.cuda.get_device_name(0))  
@@ -31,7 +34,7 @@ class KitchenEnv(gym.Env):
             dtype=np.float32
         )
 
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
 
         self.expid_pour = 0
         self.expid_scoop = 0
@@ -63,7 +66,9 @@ class KitchenEnv(gym.Env):
         new_theta = np.clip(self.gripper.angle + dtheta, -np.pi, np.pi)
         self.gripper.find_path((new_x, new_y), new_theta)  
         self.gripper.release()
+        print(f"Trying to grasp at: {self.gripper.position}, Cup1 at: {self.cup1.position}")
         grasp_successful = self.gripper.grasp(self.cup1, action[:2])
+        
         self.render()
         print(f"Gripper Position: {self.gripper.position}, Cup1 Position: {self.cup1.position}")
         print(f"Grasp successful? {grasp_successful}")
@@ -73,20 +78,15 @@ class KitchenEnv(gym.Env):
             gp_pour, c_pour = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)
             grasp, rel_x, rel_y, dangle, *_ = gp_pour.sample(c_pour)
             dangle *= np.sign(rel_x)
-
+            print(f"Pour attempt: rel_x={rel_x}, rel_y={rel_y}, dangle={dangle}")
             pour_successful, pos_ratio = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)
 
             print(f"Pouring result: {pour_successful}, Position Ratio: {pos_ratio}")
 
             if pour_successful and pos_ratio > 0.9:
-                if pos_ratio == 1:
-                    reward = 10
-                    done = True
-                    print("Pouring successful with Position Ratio of 1! Reward assigned.")
-                else:
-                    reward = -10
-                    done = True
-                    print(f"Pouring successful, but Position Ratio is not 1. Penalty assigned.")
+                reward = 10
+                done = True
+                print("Pouring successful! Reward assigned.")
                 self.gripper.place((15, 0), 0)
                 self.kitchen.liquid.remove_particles_in_cup(self.cup2)
                 self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
@@ -96,17 +96,26 @@ class KitchenEnv(gym.Env):
                 reward = -10
                 done = True
                 print("Pouring failed. Penalty assigned.")
+                self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+                self.kitchen.liquid.remove_particles_outside_cup()
                 self._reset_cup1()
                 self._reset_gripper()
         else:
             reward = -10
             done = True
             print("Grasp failed. Penalty assigned.")
+            self.kitchen.liquid.remove_particles_in_cup(self.cup2)
             self._reset_gripper()
 
         self.render()
+        state = np.array([
+            self.gripper.position[0], self.gripper.position[1], self.gripper.angle, 
+            self.cup1.position[0], self.cup1.position[1], 
+            self.cup2.position[0], self.cup2.position[1], 
+            len(self.kitchen.liquid.particles)
+        ])
         info = {}
-        return np.zeros(self.observation_space.shape), reward, done, False, info
+        return state, reward, done, False, info
 
     def render(self):
         """Render the environment using matplotlib."""
@@ -167,13 +176,13 @@ class KitchenEnv(gym.Env):
 
     def _reset_cup1(self):
         self.cup1.position = (15, 0)
+        self.kitchen.liquid.remove_particles_in_cup(self.cup1)
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
         print("Gripper reset to starting position")
 
 
     def close(self):
         """Close the environment."""
-        self.kitchen.close()
         plt.close(self.fig)
 
 def make_env():
@@ -190,17 +199,46 @@ def make_env():
 def train_sac():
     env = DummyVecEnv([make_env])
 
-    log_dir = os.path.join(os.getcwd(), "kitchen2d_tensorboard")
+    log_dir = "./sac_logs" 
     model = SAC(
     'MlpPolicy', 
     env, 
     verbose=2, 
     tensorboard_log=log_dir, 
-    learning_rate=1e-3,  
-    batch_size=128,
+    learning_rate=1e-5,  
+    batch_size=256,
+    ent_coef = "auto_0.1",
     device = "cuda"        
 )
-    model.learn(total_timesteps=100000)  
+    model.learn(total_timesteps=100000, log_interval=10)  
+    logger = configure(log_dir, ["stdout", "tensorboard"])
+    model.set_logger(logger)
+
+    total_episodes = 100000
+    episode_rewards = []
+    for episode in range(total_episodes):
+        state = env.reset()
+        done = False
+        episode_reward = 0
+
+        while not done:
+            action, _ = model.predict(state, deterministic=False)
+            state, reward, done, info = env.step(action)
+            episode_reward += reward
+
+        model.logger.record("train/episode_reward", episode_reward)
+        episode_rewards.append(episode_reward)
+
+        if episode % 10 == 0:
+            print(f"Episode {episode}: Reward = {episode_reward}")
+    plt.figure(figsize=(10,5))
+    plt.plot(range(1, total_episodes + 1), episode_rewards, marker='o', linestyle='-', color='b')
+    plt.xlabel("Episode")
+    plt.ylabel("Total Reward")
+    plt.title("Training Reward Progression")
+    plt.grid()
+    plt.savefig("training_rewards.png", dpi=300)
+    print("Training reward plot saved as training_rewards.png")
     model.save("pour_sac_model")
 
 
@@ -219,7 +257,7 @@ def evaluate_on_new_env():
         raise FileNotFoundError("Trained SAC model not found.")
 
     model = SAC.load(model_path)
-    
+   
     num_episodes = 50
     rewards = []
     success_threshold = 50
@@ -238,16 +276,20 @@ def evaluate_on_new_env():
             env.render()
 
         rewards.append(episode_reward)
+        model.logger.record("eval/episode_reward", episode_reward)
         print(f"Episode {episode + 1}: Total Reward = {episode_reward}")
+        
         if episode_reward >= success_threshold:
             success_episodes += 1
 
     average_reward = sum(rewards) / num_episodes
     success_rate = success_episodes / num_episodes
 
+    print(f"Episode {episode + 1}, Reward: {episode_reward}")
+    
     print(f"Average reward over {num_episodes} episodes: {average_reward}")
     print(f"Success rate: {success_rate * 100}%")
-    env.close()
+    
     plt.figure(figsize=(10, 5))
     plt.plot(range(1, num_episodes + 1), rewards, marker='o', linestyle='-', color='b', label="Episode Reward")
     plt.xlabel("Episode Number")
@@ -256,13 +298,14 @@ def evaluate_on_new_env():
     plt.legend()
     plt.grid()
     #plt.show()
-    plt.savefig("reward_plot.png", dpi=300)
+    plt.savefig("reward_plot_sac.png", dpi=300)
     print("Reward plot saved as reward_plot.png")
+    
 def main():
     print("Training the model with GUI...")
     train_sac()
-    #print("Training completed. Now evaluating the model...")
-    #evaluate_on_new_env()
+    print("Training completed. Now evaluating the model...")
+    evaluate_on_new_env()
 
 if __name__ == "__main__":
     main()

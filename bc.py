@@ -29,7 +29,7 @@ class KitchenEnv(gym.Env):
             dtype=np.float32
         )
 
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(12,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
 
         self.expid_pour = 0
         self.expid_scoop = 0
@@ -70,7 +70,7 @@ class KitchenEnv(gym.Env):
 
             pour_successful, pos_ratio = self.gripper.pour(self.cup2, (rel_x, rel_y), dangle)
 
-            if pour_successful and pos_ratio > 0:
+            if pour_successful and pos_ratio > 0.9:
                 reward = 10
                 done = True
                 self.gripper.place((15, 0), 0)
@@ -80,30 +80,25 @@ class KitchenEnv(gym.Env):
             else:
                 reward = -10
                 done = True
+                self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+                self.kitchen.liquid.remove_particles_outside_cup()
                 self._reset_cup1()
                 self._reset_gripper()
         else:
             reward = -10
             done = True
+            self.kitchen.liquid.remove_particles_in_cup(self.cup2)
             self._reset_gripper()
 
         self.render()
         info = {}
-        return np.zeros(self.observation_space.shape), reward, done, False, info
-
-    def _get_state(self):
-        num_liquid_particles = len(self.kitchen.liquids) if hasattr(self.kitchen, "liquids") else 0
-        cup1_size = getattr(self.cup1, "userData", {}).get("size", (0, 0))
-        cup2_size = getattr(self.cup2, "userData", {}).get("size", (0, 0))
-
-        return np.array([
-            self.gripper.position[0], self.gripper.position[1], self.gripper.angle,
-            self.cup1.position[0], self.cup1.position[1], cup1_size[0], cup1_size[1],
-            self.cup2.position[0], self.cup2.position[1], cup2_size[0], cup2_size[1],
-            num_liquid_particles  # Add number of liquid particles
+        state = np.array([
+            self.gripper.position[0], self.gripper.position[1], self.gripper.angle, 
+            self.cup1.position[0], self.cup1.position[1], 
+            self.cup2.position[0], self.cup2.position[1], 
+            len(self.kitchen.liquid.particles)
         ])
-
-
+        return state, reward, done, False, info
 
     def render(self):
         if not self.render_initialized:
@@ -134,32 +129,34 @@ class KitchenEnv(gym.Env):
         self.fig.canvas.flush_events()
 
     def _create_objects(self):
-        cup_sizes = [(5, 7), (6, 8), (7, 9)]  # Multiple cup sizes
-        size_idx = np.random.randint(len(cup_sizes))
-        w1, h1 = cup_sizes[size_idx]
-        w2, h2 = cup_sizes[np.random.randint(len(cup_sizes))]
-        
-        self.gripper = Gripper(self.kitchen, (0, 8), 0)
-        self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, w1, h1, 0.5)
-        self.cup1.userData = {"size": (w1, h1)}
-        self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, w2, h2, 0.5)
-        self.cup2.userData = {"size": (w2, h2)}
-        self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')  
+        if self.cup1 is None:
+            pour_from_w, pour_from_h, pour_to_w, pour_to_h = helper.process_gp_sample(self.expid_pour, exp='pour', is_adaptive=False, flag_lk=False)[1]
+            holder_d = 0.5
+            self.gripper = Gripper(self.kitchen, (0, 8), 0)
+            self.cup1 = ks.make_cup(self.kitchen, (15, 0), 0, pour_from_w, pour_from_h, holder_d)
+            self.cup2 = ks.make_cup(self.kitchen, (-25, 0), 0, pour_to_w, pour_to_h, holder_d)
+            liquid = ks.Liquid(self.kitchen, radius=0.2, liquid_frequency=5.0) 
+            self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')  
+
+    
 
     def _reset_gripper(self):
         self.gripper.position = (0, 8)
+        print("Gripper reset to starting position")
 
     def _reset_cup1(self):
         self.cup1.position = (15, 0)
+        self.kitchen.liquid.remove_particles_in_cup(self.cup1)
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
+        print("Gripper reset to starting position")
 
-    def save_demonstrations(self, filename="demonstrations10000.pkl"):
+    def save_demonstrations(self, filename="demonstrations.pkl"):
         with open(filename, "wb") as f:
             pickle.dump(self.demonstration_data, f)
         print(f"Demonstration data saved to {filename}")
 
 class BCNet(nn.Module):
-    def __init__(self, input_dim=12, output_dim=3):
+    def __init__(self, input_dim, output_dim):
         super(BCNet, self).__init__()
         self.fc1 = nn.Linear(input_dim, 64)
         self.fc2 = nn.Linear(64, 64)
@@ -171,7 +168,7 @@ class BCNet(nn.Module):
         x = self.fc3(x)
         return x
 
-def prepare_data(demo_filename="demonstrations10000.pkl"):
+def prepare_data(demo_filename="demonstrations.pkl"):
     with open(demo_filename, "rb") as f:
         demonstrations = pickle.load(f)
         
@@ -186,16 +183,21 @@ def prepare_data(demo_filename="demonstrations10000.pkl"):
     
     return dataloader
 
+from torch.utils.tensorboard import SummaryWriter  
+
 def train_behavior_cloning(dataloader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    model = BCNet().to(device) 
+    model = BCNet(input_dim=8, output_dim=3).to(device) 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
     
-    for epoch in range(100):
-        for states, actions in dataloader:
+    writer = SummaryWriter("runs/behavior_cloning")  
+
+    for epoch in range(100000):
+        epoch_loss = 0.0  
+        for i, (states, actions) in enumerate(dataloader):
             states, actions = states.to(device), actions.to(device)  
 
             optimizer.zero_grad()
@@ -203,11 +205,21 @@ def train_behavior_cloning(dataloader):
             loss = criterion(predicted_actions, actions)
             loss.backward()
             optimizer.step()
-        
-        print(f"Epoch {epoch+1}, Loss: {loss.item()}")
 
-    torch.save(model.state_dict(), "behavior_cloning_model2.pth")
+            epoch_loss += loss.item()
+
+            
+            writer.add_scalar("Loss/batch", loss.item(), epoch * len(dataloader) + i)
+
+        avg_epoch_loss = epoch_loss / len(dataloader) 
+        writer.add_scalar("Loss/epoch", avg_epoch_loss, epoch + 1)  
+        print(f"Epoch {epoch+1}, Loss: {avg_epoch_loss}")
+        
+
+    torch.save(model.state_dict(), "behavior_cloning_model.pth")
     print("Behavior Cloning model saved.")
+
+    writer.close()  
 
 
 
@@ -221,7 +233,7 @@ if __name__ == "__main__":
     }
     
     env = KitchenEnv(setting)
-    for episode in range(10000):  
+    for episode in range(100000):  
         state, info = env.reset()
         done = False
         while not done:
