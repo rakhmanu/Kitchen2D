@@ -97,6 +97,7 @@ class KitchenEnv(gym.Env):
             done = True
             self.gripper.place((15, 0), 0)
             self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+            self.kitchen.liquid.remove_particles_outside_cup()
             self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
             print("Cup1 refilled with liquid again.")
 
@@ -212,11 +213,11 @@ def train_ddpg():
         batch_size=256,
         device="cuda"
     )
-    model.learn(total_timesteps=80000) 
+    model.learn(total_timesteps=50000) 
     logger = configure(log_dir, ["stdout", "tensorboard"])
     model.set_logger(logger)
 
-    total_episodes = 80000
+    total_episodes = 50000
     episode_rewards = []
     
     for episode in range(total_episodes):
@@ -230,6 +231,7 @@ def train_ddpg():
             episode_reward += reward
 
         episode_rewards.append(episode_reward)
+        model.logger.record("train/episode_reward", episode_reward)
     plt.plot(range(1, total_episodes + 1), episode_rewards, marker='o', linestyle='-', color='b')
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")

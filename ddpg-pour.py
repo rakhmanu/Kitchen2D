@@ -203,16 +203,15 @@ def train_ddpg():
         env, 
         verbose=2, 
         tensorboard_log=log_dir, 
-        learning_rate=1e-5,  
+        learning_rate=1e-3,  
         batch_size=256,
-        ent_coef = "auto_0.1",
         device="cuda"
     )
-    model.learn(total_timesteps=100000) 
+    model.learn(total_timesteps=50000) 
     logger = configure(log_dir, ["stdout", "tensorboard"])
     model.set_logger(logger)
 
-    total_episodes = 100000
+    total_episodes = 50000
     episode_rewards = []
     
     for episode in range(total_episodes):
@@ -226,6 +225,7 @@ def train_ddpg():
             episode_reward += reward
 
         episode_rewards.append(episode_reward)
+        model.logger.record("train/episode_reward", episode_reward)
     plt.plot(range(1, total_episodes + 1), episode_rewards, marker='o', linestyle='-', color='b')
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")

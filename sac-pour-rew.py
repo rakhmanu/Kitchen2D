@@ -100,6 +100,7 @@ class KitchenEnv(gym.Env):
             done = True
             self.gripper.place((15, 0), 0)
             self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+            self.kitchen.liquid.remove_particles_outside_cup()
             self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
             print("Cup1 refilled with liquid again.")
 
@@ -215,11 +216,11 @@ def train_sac():
     ent_coef = "auto_0.1",
     device = "cuda"        
 )
-    model.learn(total_timesteps=80000, log_interval=10)  
+    model.learn(total_timesteps=50000, log_interval=10)  
     logger = configure(log_dir, ["stdout", "tensorboard"])
     model.set_logger(logger)
 
-    total_episodes = 80000
+    total_episodes = 50000
     episode_rewards = []
     for episode in range(total_episodes):
         state = env.reset()
@@ -231,9 +232,9 @@ def train_sac():
             state, reward, done, info = env.step(action)
             episode_reward += reward
 
-        model.logger.record("train/episode_reward", episode_reward)
+        
         episode_rewards.append(episode_reward)
-
+        model.logger.record("train/episode_reward", episode_reward)
         if episode % 10 == 0:
             print(f"Episode {episode}: Reward = {episode_reward}")
     plt.figure(figsize=(10,5))

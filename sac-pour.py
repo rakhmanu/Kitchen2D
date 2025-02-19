@@ -210,11 +210,11 @@ def train_sac():
     ent_coef = "auto_0.1",
     device = "cuda"        
 )
-    model.learn(total_timesteps=100000, log_interval=10)  
+    model.learn(total_timesteps=50000, log_interval=10)  
     logger = configure(log_dir, ["stdout", "tensorboard"])
     model.set_logger(logger)
 
-    total_episodes = 100000
+    total_episodes = 50000
     episode_rewards = []
     for episode in range(total_episodes):
         state = env.reset()
@@ -226,8 +226,9 @@ def train_sac():
             state, reward, done, info = env.step(action)
             episode_reward += reward
 
-        model.logger.record("train/episode_reward", episode_reward)
+        
         episode_rewards.append(episode_reward)
+        model.logger.record("train/episode_reward", episode_reward)
 
         if episode % 10 == 0:
             print(f"Episode {episode}: Reward = {episode_reward}")
