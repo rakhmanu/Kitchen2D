@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import os
 import torch
 from stable_baselines3.common.logger import configure
+from torch.utils.tensorboard import SummaryWriter
+
 print(torch.cuda.is_available())  
 print(torch.cuda.device_count()) 
 print(torch.cuda.get_device_name(0))  
@@ -196,7 +198,7 @@ def make_env():
 def train_ddpg():
     env = DummyVecEnv([make_env])
     log_dir = "./ddpg_logs" 
-    os.makedirs(log_dir, exist_ok=True)
+    writer = SummaryWriter(log_dir)
 
     model = DDPG(
         'MlpPolicy', 
@@ -207,11 +209,10 @@ def train_ddpg():
         batch_size=256,
         device="cuda"
     )
-    model.learn(total_timesteps=50000) 
-    logger = configure(log_dir, ["stdout", "tensorboard"])
-    model.set_logger(logger)
+    model.learn(total_timesteps=200000) 
+   
 
-    total_episodes = 50000
+    total_episodes = 200000
     episode_rewards = []
     
     for episode in range(total_episodes):
@@ -225,14 +226,12 @@ def train_ddpg():
             episode_reward += reward
 
         episode_rewards.append(episode_reward)
-        model.logger.record("train/episode_reward", episode_reward)
-    plt.plot(range(1, total_episodes + 1), episode_rewards, marker='o', linestyle='-', color='b')
-    plt.xlabel("Episode")
-    plt.ylabel("Total Reward")
-    plt.title("Training Reward Progression")
-    plt.grid()
-    plt.savefig("training_rewards.png", dpi=300)
-    print("Training reward plot saved as training_rewards.png")
+        writer.add_scalar("TrainingRewardDDPG/Episode", episode_reward, episode)  
+
+        print(f"Episode {episode + 1}: Reward = {episode_reward}")
+
+    writer.close() 
+
     model.save("pour_ddpg_model")
 
 
@@ -261,7 +260,9 @@ def evaluate_on_new_env():
         raise FileNotFoundError("Trained DDPG model not found.")
 
     model = DDPG.load(model_path)
-    
+    log_dir = "./ddpg_logs" 
+    writer = SummaryWriter(log_dir)
+
     num_episodes = 50
     rewards = []
     success_threshold = 50
@@ -280,13 +281,21 @@ def evaluate_on_new_env():
             env.render()
 
         rewards.append(episode_reward)
-        
-        
+        writer.add_scalar("TestRewardDDPG/Episode", episode_reward, episode)  
+
+        print(f"Episode {episode + 1}: Reward = {episode_reward}")
         if episode_reward >= success_threshold:
             success_episodes += 1
-
+        
+    average_reward = sum(rewards) / num_episodes
     success_rate = success_episodes / num_episodes
+
+    print(f"Episode {episode + 1}, Reward: {episode_reward}")
+    
+    print(f"Average reward over {num_episodes} episodes: {average_reward}")
     print(f"Success rate: {success_rate * 100}%")
+    
+    writer.close() 
 
 def main():
     print("Training the model with GUI...")

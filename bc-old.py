@@ -136,7 +136,7 @@ class KitchenEnv(gym.Env):
         self.cup1.position = (15, 0)
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
 
-    def save_demonstrations(self, filename="demonstrations.pkl"):
+    def save_demonstrations(self, filename="demonstrations-new.pkl"):
         with open(filename, "wb") as f:
             pickle.dump(self.demonstration_data, f)
         print(f"Demonstration data saved to {filename}")
@@ -154,7 +154,7 @@ class BCNet(nn.Module):
         x = self.fc3(x)
         return x
 
-def prepare_data(demo_filename="demonstrations.pkl"):
+def prepare_data(demo_filename="demonstrations-new.pkl"):
     with open(demo_filename, "rb") as f:
         demonstrations = pickle.load(f)
         
@@ -177,7 +177,7 @@ def train_behavior_cloning(dataloader):
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
     
-    for epoch in range(10):
+    for epoch in range(200000):
         for states, actions in dataloader:
             states, actions = states.to(device), actions.to(device)  
 
@@ -189,7 +189,7 @@ def train_behavior_cloning(dataloader):
         
         print(f"Epoch {epoch+1}, Loss: {loss.item()}")
 
-    torch.save(model.state_dict(), "behavior_cloning_model.pth")
+    torch.save(model.state_dict(), "behavior_cloning_model-new.pth")
     print("Behavior Cloning model saved.")
 
 
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     }
     
     env = KitchenEnv(setting)
-    for episode in range(10000):  
+    for episode in range(100000):  
         state, info = env.reset()
         done = False
         while not done:

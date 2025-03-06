@@ -150,7 +150,7 @@ class KitchenEnv(gym.Env):
         self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water') 
         print("Gripper reset to starting position")
 
-    def save_demonstrations(self, filename="demonstrations.pkl"):
+    def save_demonstrations(self, filename="demonstrations-new.pkl"):
         with open(filename, "wb") as f:
             pickle.dump(self.demonstration_data, f)
         print(f"Demonstration data saved to {filename}")
@@ -168,7 +168,7 @@ class BCNet(nn.Module):
         x = self.fc3(x)
         return x
 
-def prepare_data(demo_filename="demonstrations.pkl"):
+def prepare_data(demo_filename="demonstrations-new.pkl"):
     with open(demo_filename, "rb") as f:
         demonstrations = pickle.load(f)
         
@@ -195,7 +195,7 @@ def train_behavior_cloning(dataloader):
     
     writer = SummaryWriter("runs/behavior_cloning")  
 
-    for epoch in range(100000):
+    for epoch in range(200000):
         epoch_loss = 0.0  
         for i, (states, actions) in enumerate(dataloader):
             states, actions = states.to(device), actions.to(device)  
@@ -216,7 +216,7 @@ def train_behavior_cloning(dataloader):
         print(f"Epoch {epoch+1}, Loss: {avg_epoch_loss}")
         
 
-    torch.save(model.state_dict(), "behavior_cloning_model.pth")
+    torch.save(model.state_dict(), "behavior_cloning_model_new.pth")
     print("Behavior Cloning model saved.")
 
     writer.close()  
@@ -233,13 +233,26 @@ if __name__ == "__main__":
     }
     
     env = KitchenEnv(setting)
+    episode_rewards = []
     for episode in range(100000):  
         state, info = env.reset()
         done = False
+        episode_reward = 0
         while not done:
             action = np.random.uniform(low=-1.0, high=1.0, size=(3,)) 
             state, reward, done, _, info = env.step(action)
-    
+            episode_reward += reward
+
+        episode_rewards.append(episode_reward)
+    plt.plot(range(1, total_episodes + 1), episode_rewards, marker='o', linestyle='-', color='b')
+    plt.xlabel("Episode")
+    plt.ylabel("Total Reward")
+    plt.title("Training Reward Progression")
+    plt.grid()
+    plt.savefig("training_rewards_bc.png", dpi=300)
+    print("Training reward plot saved as training_rewards.png")
+   
+
     env.save_demonstrations()
     dataloader = prepare_data()
     train_behavior_cloning(dataloader)

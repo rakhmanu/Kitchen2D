@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import os
 import torch
 from stable_baselines3.common.logger import configure
- 
+from torch.utils.tensorboard import SummaryWriter
 
 print(torch.cuda.is_available())  
 print(torch.cuda.device_count()) 
@@ -198,48 +198,43 @@ def make_env():
 
 def train_sac():
     env = DummyVecEnv([make_env])
+    
+    log_dir = "./sac_logs"
+    writer = SummaryWriter(log_dir)
 
-    log_dir = "./sac_logs" 
     model = SAC(
-    'MlpPolicy', 
-    env, 
-    verbose=2, 
-    tensorboard_log=log_dir, 
-    learning_rate=1e-5,  
-    batch_size=256,
-    ent_coef = "auto_0.1",
-    device = "cuda"        
-)
-    model.learn(total_timesteps=50000, log_interval=10)  
-    logger = configure(log_dir, ["stdout", "tensorboard"])
-    model.set_logger(logger)
+        'MlpPolicy', 
+        env, 
+        verbose=2, 
+        learning_rate=1e-3,  
+        batch_size=256,
+        ent_coef="auto_0.1",
+        device="cuda",
+        tensorboard_log=log_dir
+    )
 
-    total_episodes = 50000
+    model.learn(total_timesteps=200000, log_interval=10)
+
+    total_episodes = 200000
     episode_rewards = []
+
     for episode in range(total_episodes):
-        state = env.reset()
+        state, _ = env.reset()
         done = False
         episode_reward = 0
 
         while not done:
             action, _ = model.predict(state, deterministic=False)
-            state, reward, done, info = env.step(action)
+            state, reward, done, _, info = env.step(action)
             episode_reward += reward
 
-        
         episode_rewards.append(episode_reward)
-        model.logger.record("train/episode_reward", episode_reward)
+        writer.add_scalar("TrainingRewardSAC/Episode", episode_reward, episode)  
 
-        if episode % 10 == 0:
-            print(f"Episode {episode}: Reward = {episode_reward}")
-    plt.figure(figsize=(10,5))
-    plt.plot(range(1, total_episodes + 1), episode_rewards, marker='o', linestyle='-', color='b')
-    plt.xlabel("Episode")
-    plt.ylabel("Total Reward")
-    plt.title("Training Reward Progression")
-    plt.grid()
-    plt.savefig("training_rewards.png", dpi=300)
-    print("Training reward plot saved as training_rewards.png")
+        print(f"Episode {episode + 1}: Reward = {episode_reward}")
+
+    writer.close() 
+
     model.save("pour_sac_model")
 
 
@@ -258,7 +253,9 @@ def evaluate_on_new_env():
         raise FileNotFoundError("Trained SAC model not found.")
 
     model = SAC.load(model_path)
-   
+    log_dir = "./sac_logs" 
+    writer = SummaryWriter(log_dir)
+
     num_episodes = 50
     rewards = []
     success_threshold = 50
@@ -277,12 +274,12 @@ def evaluate_on_new_env():
             env.render()
 
         rewards.append(episode_reward)
-        model.logger.record("eval/episode_reward", episode_reward)
-        print(f"Episode {episode + 1}: Total Reward = {episode_reward}")
-        
+        writer.add_scalar("TestRewardSAC/Episode", episode_reward, episode)  
+
+        print(f"Episode {episode + 1}: Reward = {episode_reward}")
         if episode_reward >= success_threshold:
             success_episodes += 1
-
+        
     average_reward = sum(rewards) / num_episodes
     success_rate = success_episodes / num_episodes
 
@@ -291,16 +288,7 @@ def evaluate_on_new_env():
     print(f"Average reward over {num_episodes} episodes: {average_reward}")
     print(f"Success rate: {success_rate * 100}%")
     
-    plt.figure(figsize=(10, 5))
-    plt.plot(range(1, num_episodes + 1), rewards, marker='o', linestyle='-', color='b', label="Episode Reward")
-    plt.xlabel("Episode Number")
-    plt.ylabel("Reward")
-    plt.title("Reward per Episode")
-    plt.legend()
-    plt.grid()
-    #plt.show()
-    plt.savefig("reward_plot_sac.png", dpi=300)
-    print("Reward plot saved as reward_plot.png")
+    writer.close() 
     
 def main():
     print("Training the model with GUI...")
