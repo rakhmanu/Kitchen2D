@@ -93,6 +93,7 @@ class KitchenEnv(gym.Env):
             done = True
             self.gripper.place((15, 0), 0)
             self.kitchen.liquid.remove_particles_in_cup(self.cup2)
+            self.kitchen.liquid.remove_particles_outside_cup()
             self.kitchen.gen_liquid_in_cup(self.cup1, N=10, userData='water')
             print("Cup1 refilled with liquid again.")
 
@@ -204,46 +205,63 @@ def make_env():
 
 def train_sac():
     env = DummyVecEnv([make_env])
-
-    log_dir = "./sac_logs" 
+    log_dir = "./sac_logs"
+    
     model = SAC(
-    'MlpPolicy', 
-    env, 
-    verbose=2, 
-    tensorboard_log=log_dir, 
-    learning_rate=1e-5,  
-    batch_size=256,
-    ent_coef="auto_0.1"        
-)
-    model.learn(total_timesteps=200, log_interval=10) 
+        'MlpPolicy', 
+        env, 
+        verbose=2, 
+        tensorboard_log=log_dir, 
+        learning_rate=1e-5,  
+        batch_size=256,
+        ent_coef="auto_0.1"
+    )
+
     logger = configure(log_dir, ["stdout", "tensorboard"])
     model.set_logger(logger)
 
-    total_episodes = 200
     episode_rewards = []
+    total_episodes = 5000
+    window_size = 100  
+
     for episode in range(total_episodes):
         state = env.reset()
-
         done = False
         episode_reward = 0
 
         while not done:
             action, _ = model.predict(state, deterministic=False)
-            state, reward, done, info = env.step(action)
+            step_result = env.step(action)
+            if len(step_result) == 5:
+                state, reward, done, truncated, info = step_result
+            else:  
+                state, reward, done, info = step_result
+                truncated = False 
+
             episode_reward += reward
 
         episode_rewards.append(episode_reward)
         print(f"Episode {episode + 1}: Reward = {episode_reward}")
+        model.logger.record("train/episode_reward", episode_reward)
+     
+        if (episode + 1) % window_size == 0:
+            recent_rewards = episode_rewards[-window_size:]
+            avg_reward_last_window = sum(recent_rewards) / window_size
+            
+
+   
     plt.figure(figsize=(10, 5))
-    plt.plot(range(1, total_episodes + 1), episode_rewards, marker='o', linestyle='-', color='b')
+    plt.plot(range(1, len(episode_rewards) + 1), episode_rewards, marker='o', linestyle='-', color='b')
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")
     plt.title("Training Reward Progression")
     plt.grid()
-    plt.savefig("training_rewards.png", dpi=300)
-    print("Training reward plot saved as training_rewards.png")
-    #plt.show()
-    model.save("pour_sac_model")
+    plt.savefig("training_rewards_sac_rew.png", dpi=300)
+    print("Training reward plot saved as training_rewards_sac_rew.png")
+
+    model.save("pour_sac_model_rew")
+
+
   
 
 def evaluate_on_trained_env():
@@ -256,7 +274,7 @@ def evaluate_on_trained_env():
     }
     env = KitchenEnv(setting)
 
-    model_path = "pour_sac_model"
+    model_path = "pour_sac_model_rew"
     if not os.path.exists(model_path + ".zip"):
         raise FileNotFoundError("Trained SAC model not found.")
 
@@ -302,7 +320,7 @@ def evaluate_on_trained_env():
     plt.grid()
     
     # Save the plot as a PNG file
-    plt.savefig("reward_plot_sac.png", dpi=300)
+    plt.savefig("reward_plot_sac_rew.png", dpi=300)
     print("Reward plot saved as reward_plot.png")
 
 
