@@ -218,7 +218,12 @@ def train_behavior_cloning(dataloader):
 
     torch.save(model.state_dict(), "behavior_cloning_model_new.pth")
     print("Behavior Cloning model saved.")
-
+    plt.plot(range(1, len(epoch_losses) + 1), epoch_losses, marker='x', linestyle='-', color='r')
+    plt.title("Loss per Epoch during Behavior Cloning Training")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.savefig("loss_per_epoch_bc.png", dpi=300)
+    print("Loss per epoch plot saved as loss_per_epoch_bc.png")
     writer.close()  
 
 

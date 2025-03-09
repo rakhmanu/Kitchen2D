@@ -12,6 +12,7 @@ import os
 import torch
 from stable_baselines3.common.logger import configure
 from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
 
 print(torch.cuda.is_available())  
 print(torch.cuda.device_count()) 
@@ -56,6 +57,7 @@ class KitchenEnv(gym.Env):
         state = np.zeros(self.observation_space.shape)  
         info = {}  
         return state, info
+
 
     def step(self, action):
         """Take a step in the environment based on the action."""
@@ -219,7 +221,7 @@ def train_sac():
     episode_rewards = []
 
     for episode in range(total_episodes):
-        state, _ = env.reset()
+        state = env.reset()
         done = False
         episode_reward = 0
 
@@ -234,6 +236,11 @@ def train_sac():
         print(f"Episode {episode + 1}: Reward = {episode_reward}")
 
     writer.close() 
+    plt.plot(range(total_episodes), episode_rewards)
+    plt.title("Episode Rewards during SAC Training")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.savefig("sac-rew.png", dpi=300, bbox_inches="tight")
 
     model.save("pour_sac_model")
 
@@ -262,7 +269,7 @@ def evaluate_on_new_env():
     success_episodes = 0
 
     for episode in range(num_episodes):
-        state, _ = env.reset()
+        state, info = env.reset()
         episode_reward = 0
         done = False
         truncated = False

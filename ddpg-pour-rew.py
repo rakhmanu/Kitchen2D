@@ -236,7 +236,12 @@ def train_ddpg():
 
         print(f"Episode {episode + 1}: Reward = {episode_reward}")
 
-    writer.close() 
+    writer.close()
+    plt.plot(range(total_episodes), episode_rewards)
+    plt.title("Episode Rewards during DDPG Training")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.savefig("ddpg-rew2.png", dpi=300, bbox_inches="tight")  
 
     model.save("pour_ddpg_model_rew")
 

@@ -12,6 +12,7 @@ import os
 import torch
 from stable_baselines3.common.logger import configure
 from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
 
 print(torch.cuda.is_available())  
 print(torch.cuda.device_count()) 
@@ -239,9 +240,14 @@ def train_sac():
 
         print(f"Episode {episode + 1}: Reward = {episode_reward}")
 
-    writer.close() 
+    writer.close()
+    plt.plot(range(total_episodes), episode_rewards)
+    plt.title("Episode Rewards during SAC Training")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.savefig("sac-rew2.png", dpi=300, bbox_inches="tight") 
 
-    model.save("pour_sac_model")
+    model.save("pour_sacrew_model")
 
 
 def evaluate_on_new_env():
