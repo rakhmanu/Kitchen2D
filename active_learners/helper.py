@@ -162,8 +162,11 @@ def sample_tgmm(center, scale, n, xmin, xmax):
     def truncpdf(j,i):
         return truncnorm.pdf(x_samples_gmm[:,j], ta[i][j], tb[i][j], center[i][j], scale[j])
     
-    prob = [np.prod(map(partial(truncpdf, i=i), range(dx)), axis=0) for i in range(slen)]
+    #prob = [np.prod(map(partial(truncpdf, i=i), range(dx)), axis=0) for i in range(slen)]
+    #prob = np.sum(prob, axis=0) / slen
+    prob = [np.prod(list(map(partial(truncpdf, i=i), range(dx))), axis=0) for i in range(slen)]
     prob = np.sum(prob, axis=0) / slen
+
     np.clip(prob, EPS, 1/EPS)
     return x_samples_gmm, 1./prob
 

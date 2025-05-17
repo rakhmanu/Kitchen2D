@@ -14,7 +14,7 @@ from gcl.agentVPG import AgentVPG
 import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.tensorboard import SummaryWriter
- 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class KitchenEnv(gym.Env):
     def __init__(self, setting):
         super(KitchenEnv, self).__init__()
@@ -211,19 +211,19 @@ def train_gcl():
     n_actions = env.action_space.shape[0]
 
     # Initialize GCL-VPG model
-    model = AgentVPG(state_shape, n_actions, 'toy')  
+    model = AgentVPG(state_shape, n_actions, 'toy').to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     scheduler = StepLR(optimizer, step_size=1000, gamma=0.9)
     
     writer = SummaryWriter("./gcl_logs")
 
     mean_rewards = []
-    total_iterations = 10
+    total_iterations = 1000
 
     for i in range(total_iterations):
         rewards = []
         
-        for _ in range(10):  # 100 sessions per update
+        for _ in range(1000):  # 100 sessions per update
             session_rewards = train_vpg_on_session(model, env, *model.generate_session(env), optimizer)
             rewards.append(session_rewards)
         
@@ -253,8 +253,8 @@ def train_gcl():
 
     num_demo = 50
     demo_samples = [model.generate_session(env) for i in range(num_demo)]
-    new_model = gcl.AgentVPG(state_shape, n_actions, 'toy')
-    cost = gcl.CostNN(state_shape)
+    new_model = gcl.AgentVPG(state_shape, n_actions, 'toy').to(device)  # Move new model to GPU
+    cost = gcl.CostNN(state_shape).to(device)  # Move cost model to GPU
     optimizer_model = torch.optim.Adam(new_model.parameters(), 1e-3)
     optimizer_cost = torch.optim.Adam(cost.parameters(), 1e-3)
     mean_rewards = []

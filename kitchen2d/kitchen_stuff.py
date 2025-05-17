@@ -217,21 +217,21 @@ class Kitchen2D(b2WorldInterface):
         '''
         # Assuming cup.position has x, y coordinates and the cup's rotation can be inferred from the position.
         if np.abs(cup.position[0]) > 0.1:  # Example: check if the cup is not centered (tilted position)
-            print(f"Warning: Cup is not vertical. Adjusting cup to a vertical position.")
+            #print(f"Warning: Cup is not vertical. Adjusting cup to a vertical position.")
             cup.position = (0, cup.position[1])  # Resetting cup's position to upright vertically along the y-axis
         
         # Proceed with generating liquid particles if the cup is now vertical
         grid_x = (cup.usr_w - cup.usr_d * 2) / (self.liquid.radius * 2)
         grid_y = (cup.usr_h - cup.usr_d) / (self.liquid.radius * 2)  
         assert grid_x * grid_y >= N, f'Cup cannot hold {N} particles'
-        print(f"Generating {N} liquid particles inside the cup")
+        #print(f"Generating {N} liquid particles inside the cup")
         
         for i in range(N):
             x, y = i % grid_x, i // grid_x  
             pos = (self.liquid.radius * (2 * x + 1) + cup.usr_d, 
                 self.liquid.radius * (2 * y + 1) + cup.usr_d)
             particle_position = cup.position - cup.shift + pos
-            print(f"Creating particle {i} at position: {particle_position}")
+            #print(f"Creating particle {i} at position: {particle_position}")
             self.liquid.make_one_particle(particle_position, userData)
 
         
@@ -315,14 +315,14 @@ class Liquid(object):
                 self.particle_calls = 0
             self.particle_calls += 1
         else:
-            num_particles_to_create = max(2, min(30, int(self.liquid_frequency)))
+            num_particles_to_create = max(20, min(60, int(self.liquid_frequency)))
             for _ in range(num_particles_to_create):
                 self.make_one_particle(pos, self.liquid_name)
     def make_one_particle(self, pos, userData):
         '''
         Make one particle of name userData at position pos.
         '''
-        print(f"Creating particle at position: {pos}")
+        #print(f"Creating particle at position: {pos}")
         p = self.world.CreateDynamicBody(position=pos, userData=userData)
         p.CreateFixture(
             shape=self.shape,
@@ -330,7 +330,7 @@ class Liquid(object):
             density=self.density
         )
         self.particles.append(p)
-        print(f"Particle added to liquid: {p}")
+        #print(f"Particle added to liquid: {p}")
         
     def remove_particles_in_cup(self, cup):
         '''

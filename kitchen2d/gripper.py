@@ -649,10 +649,10 @@ class Gripper(object):
             body_h = (upper[1] - lower[1]) - EPS
 
             # Debugging outputs
-            print(f"body_position: {body_position}, type: {type(body_position)}")
-            print(f"lower: {lower}, upper: {upper}")
-            print(f"body_h: {body_h}, type: {type(body_h)}")
-            print(f"lower[1]: {lower[1]}, pos_ratio: {pos_ratio}")
+            #print(f"body_position: {body_position}, type: {type(body_position)}")
+            #print(f"lower: {lower}, upper: {upper}")
+            #print(f"body_h: {body_h}, type: {type(body_h)}")
+            #print(f"lower[1]: {lower[1]}, pos_ratio: {pos_ratio}")
 
             # Handle scalar and sequence cases for pos_ratio
             if isinstance(pos_ratio, (float, int)):  # Scalar case
@@ -770,9 +770,9 @@ class Gripper(object):
             return False
         self.close()
 
-        print('mass before grasp check={}'.format(self.mass))
+        #print('mass before grasp check={}'.format(self.mass))
         self.check_grasp(body)
-        print('mass after grasp check={}'.format(self.mass))
+        #print('mass after grasp check={}'.format(self.mass))
         dpos[1] += EPS
         self.apply_lowlevel_control(dpos, 0)
         return self.attached
@@ -810,9 +810,9 @@ class Gripper(object):
         self.close()  # Close the gripper
 
         # Debug logs for mass check before and after
-        print('Mass before grasp check: {}'.format(self.mass))
+        #print('Mass before grasp check: {}'.format(self.mass))
         self.check_grasp(body)
-        print('Mass after grasp check: {}'.format(self.mass))
+        #print('Mass after grasp check: {}'.format(self.mass))
 
         # Avoid collision checker thinking "on countertop" is a collision
         dpos[1] += EPS  # A small offset to ensure no collision with countertop

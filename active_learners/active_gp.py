@@ -81,7 +81,7 @@ class ActiveGP(ActiveLearner):
         x0 = np.vstack((x0, self.xx[np.squeeze(self.yy)>0][:,self.func.param_idx]))
         x_star, y_star = helper.global_minimize(
             ac_f, ac_fg, self.func.x_range[:, self.func.param_idx], 10000, x0)
-        print ('best beta=', -y_star)
+        #print ('best beta=', -y_star)
         self.best_beta = -y_star
         self.beta = norm.ppf(self.betalambda*norm.cdf(self.best_beta))
         if self.best_beta < 0:
@@ -131,7 +131,7 @@ class ActiveGP(ActiveLearner):
         while flag or len(good_samples) <= m:
             flag = False # make sure it samples at least once
             if time.time() - t_start > self.sample_time_limit:
-                print('Elapsed sampling time = {}, sampling iterations = {}'.format(time.time() - t_start), sampled_cnt)
+                #print('Elapsed sampling time = {}, sampling iterations = {}'.format(time.time() - t_start), sampled_cnt)
                 raise ValueError('Not enough good samples.')
             sampled_cnt += 1
 
@@ -161,7 +161,7 @@ class ActiveGP(ActiveLearner):
                 x_samples = good_samples[x_samples_inds]
 
 
-        print('{} samples are generated with the adaptive sampler.'.format(len(good_samples)))
+        #print('{} samples are generated with the adaptive sampler.'.format(len(good_samples)))
         self.good_samples = good_samples
         return x_samples
     def reset_sample(self):
@@ -259,17 +259,17 @@ class ActiveGP(ActiveLearner):
         self.yy = np.array(list(self.yy), dtype=np.float64).reshape(-1, 1)
 
         # Debugging: Check type and shape of self.xx and self.yy
-        print(f"Type of self.xx: {type(self.xx)}")
-        print(f"Shape of self.xx: {self.xx.shape}")
-        print(f"Type of self.yy: {type(self.yy)}")
-        print(f"Shape of self.yy: {self.yy.shape}")
+        #print(f"Type of self.xx: {type(self.xx)}")
+        #print(f"Shape of self.xx: {self.xx.shape}")
+        #print(f"Type of self.yy: {type(self.yy)}")
+        #print(f"Shape of self.yy: {self.yy.shape}")
 
         # Kernel creation and GP model training
         lengthscale = (self.func.x_range[1] - self.func.x_range[0]) * 0.05
         k = gpy.kern.Matern52(input_dim=self.func.x_range.shape[1], ARD=True, lengthscale=lengthscale)
 
-        print(f"Kernel type: {type(k)}")
-        print(f"Kernel lengthscale: {k.lengthscale}")
+        #print(f"Kernel type: {type(k)}")
+        #print(f"Kernel lengthscale: {k.lengthscale}")
 
         # Ensure the model is created with the correct kernel
         self.model = gpy.models.GPRegression(self.xx, self.yy, k)
@@ -284,7 +284,7 @@ class ActiveGP(ActiveLearner):
 
         # Optimize the model
         self.model.optimize(messages=False)
-        print(self.model)
+        #print(self.model)
 
     def query_lse(self, context):
         '''
