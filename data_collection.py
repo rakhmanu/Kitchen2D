@@ -59,7 +59,8 @@ def collect_pour_sample(gp_model, constants, kitchen, cup1_pos, cup2_pos, grippe
         'cup2_pos_x': float(cup2_pos[0]),
         'cup2_pos_y': float(cup2_pos[1]),
         'gripper_pos_x': float(gripper.position[0]),
-        'gripper_pos_y': float(gripper.position[1])
+        'gripper_pos_y': float(gripper.position[1]),
+        'gripper_angle': float(gripper.angle) 
     }
 
 def save_results_hdf5(results, filename='pour_data.h5'):
@@ -75,6 +76,7 @@ def save_results_hdf5(results, filename='pour_data.h5'):
     cup2_y = np.array([r['cup2_pos_y'] for r in results])
     grip_x = np.array([r['gripper_pos_x'] for r in results])
     grip_y = np.array([r['gripper_pos_y'] for r in results])
+    grip_angle = np.array([r['gripper_angle'] for r in results])
 
     with h5py.File(filename, 'w') as f:
         f.create_dataset('grasp', data=grasp_array)
@@ -89,6 +91,7 @@ def save_results_hdf5(results, filename='pour_data.h5'):
         f.create_dataset('cup2_pos_y', data=cup2_y)
         f.create_dataset('gripper_pos_x', data=grip_x)
         f.create_dataset('gripper_pos_y', data=grip_y)
+        f.create_dataset('gripper_angle', data=grip_angle)
     print(f"Saved results to {filename}")
 
 
